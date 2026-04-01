@@ -11,10 +11,12 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/helpers.js',
   '/config.js',
+  '/i18n.js',
   '/auth.js',
   '/units.js',
   '/payments.js',
   '/dashboard.js',
+  '/reports.js',
   '/moves.js',
 ];
 

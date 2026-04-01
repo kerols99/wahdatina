@@ -32,8 +32,8 @@ async function autoFillRent() {
     const { data, error } = await sb
       .from('units')
       .select('id, tenant_name, monthly_rent, rent1, rent2, language')
-      .eq('apartment', apt)
-      .eq('room', room)
+      .eq('apartment', String(apt))  // Q1
+      .eq('room', String(room))  // Q1
       .maybeSingle();
 
     if (error) throw error;
@@ -71,22 +71,22 @@ async function saveRent() {
 
   // تحقق
   if (Helpers.isEmpty(apt) || Helpers.isEmpty(room)) {
-    toast('رقم الشقة والغرفة مطلوبان', 'error'); return;
+    toast(t('toast_apt_required'), 'error'); return;
   }
   if (!amount || amount <= 0) {
-    toast('يرجى إدخال مبلغ صحيح', 'error'); return;
+    toast(t('toast_amount_req'), 'error'); return;
   }
   if (!month) {
-    toast('يرجى تحديد شهر الدفع', 'error'); return;
+    toast(t('toast_month_req'), 'error'); return;
   }
   if (!date) {
-    toast('يرجى تحديد تاريخ الاستلام', 'error'); return;
+    toast(t('toast_date_req'), 'error'); return;
   }
 
   const payload = {
     unit_id:        unitId,
-    apartment:      apt,
-    room:           room,
+    apartment:      String(apt),    // Q1
+    room:           String(room),   // Q1
     tenant_name:    tenant || null,
     amount:         amount,
     payment_month:  Helpers.toMonthFirst(month),
@@ -112,7 +112,7 @@ async function saveRent() {
     // توليد إيصال
     await createReceipt(inserted, unitId, apt, room, tenant, amount, month, date, method);
 
-    toast('✅ تم تسجيل الدفعة', 'success');
+    toast(t('toast_rent_saved'), 'success');
     resetRentForm();
 
     // تحديث الوحدات إذا كنا في بانل الوحدات
@@ -136,14 +136,15 @@ async function createReceipt(payment, unitId, apt, room, tenant, amount, month, 
       receipt_no:     receiptNo,
       payment_id:     payment.id,
       unit_id:        unitId,
-      apartment:      apt,
-      room:           room,
+      apartment:      String(apt),   // Q1
+      room:           String(room),  // Q1
       tenant_name:    tenant || null,
       amount:         amount,
-      payment_month:  Helpers.fmtMonth(month),
+      // Q3: payment_month دايماً YYYY-MM-01
+      payment_month:  Helpers.toMonthFirst(month),
       payment_date:   date,
       payment_method: method,
-      lang:           'AR',
+      lang:           LANG === 'ar' ? 'AR' : 'EN',
     });
     if (error) console.warn('Receipt insert warn:', error.message);
   } catch (err) {
@@ -162,10 +163,10 @@ async function saveExpense() {
   const receipt  = document.getElementById('exp-receipt')?.value.trim();
 
   if (!amount || amount <= 0) {
-    toast('يرجى إدخال مبلغ صحيح', 'error'); return;
+    toast(t('toast_amount_req'), 'error'); return;
   }
   if (!month) {
-    toast('يرجى تحديد الشهر', 'error'); return;
+    toast(t('toast_month_req'), 'error'); return;
   }
 
   const payload = {
@@ -180,7 +181,7 @@ async function saveExpense() {
   try {
     const { error } = await sb.from('expenses').insert(payload);
     if (error) throw error;
-    toast('✅ تم تسجيل المصروف', 'success');
+    toast(t('toast_exp_saved'), 'success');
     resetExpenseForm();
   } catch (err) {
     console.error('saveExpense error:', err);
@@ -200,10 +201,10 @@ async function saveOwnerPayment() {
   const notes   = document.getElementById('own-notes')?.value.trim();
 
   if (!amount || amount <= 0) {
-    toast('يرجى إدخال مبلغ صحيح', 'error'); return;
+    toast(t('toast_amount_req'), 'error'); return;
   }
   if (!month) {
-    toast('يرجى تحديد الشهر', 'error'); return;
+    toast(t('toast_month_req'), 'error'); return;
   }
 
   const payload = {
@@ -219,7 +220,7 @@ async function saveOwnerPayment() {
   try {
     const { error } = await sb.from('owner_payments').insert(payload);
     if (error) throw error;
-    toast('✅ تم تسجيل دفعة المالك', 'success');
+    toast(t('toast_own_saved'), 'success');
     resetOwnerForm();
   } catch (err) {
     console.error('saveOwnerPayment error:', err);
@@ -243,7 +244,7 @@ async function saveDeposit() {
   const notes    = document.getElementById('dep-notes')?.value.trim();
 
   if (Helpers.isEmpty(apt) || Helpers.isEmpty(room)) {
-    toast('رقم الشقة والغرفة مطلوبان', 'error'); return;
+    toast(t('toast_apt_required'), 'error'); return;
   }
 
   // جلب unit_id
@@ -252,16 +253,16 @@ async function saveDeposit() {
     const { data } = await sb
       .from('units')
       .select('id')
-      .eq('apartment', apt)
-      .eq('room', room)
+      .eq('apartment', String(apt))  // Q1
+      .eq('room', String(room))      // Q1
       .maybeSingle();
     unitId = data?.id || null;
   } catch {/* لا بأس */}
 
   const payload = {
     unit_id:               unitId,
-    apartment:             apt,
-    room:                  room,
+    apartment:             String(apt),   // Q1
+    room:                  String(room),  // Q1
     tenant_name:           tenant   || null,
     amount:                amount,
     status:                status,
@@ -276,7 +277,7 @@ async function saveDeposit() {
   try {
     const { error } = await sb.from('deposits').insert(payload);
     if (error) throw error;
-    toast('✅ تم تسجيل التأمين', 'success');
+    toast(t('toast_dep_saved'), 'success');
     resetDepositForm();
   } catch (err) {
     console.error('saveDeposit error:', err);

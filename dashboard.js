@@ -1,165 +1,259 @@
-// ══════════════════════════════
-// dashboard.js — الرئيسية والـ KPIs
-// ══════════════════════════════
-
+// ══════════════════════════════════════════
+// dashboard.js — الرئيسية + تقرير التحصيل + المتأخرون
+// ══════════════════════════════════════════
 'use strict';
 
+// ─────────────────────────────────────────
+// loadHome — الشاشة الرئيسية
+// Q5: activateScheduled تتكال من هنا مباشرة
+// ─────────────────────────────────────────
 async function loadHome() {
   const container = document.getElementById('home-content');
   if (!container) return;
-  container.innerHTML = '<div class="loading">⏳ جاري التحميل...</div>';
+  container.innerHTML = `<div class="loading">${t('loading')}</div>`;
+
+  // Q5: activateScheduled من loadHome مباشرة
+  activateScheduled?.();
 
   try {
     const monthFirst = Helpers.currentMonthFirst();
-    const todayStr   = Helpers.today();
 
-    // جلب كل البيانات دفعة واحدة
+    // Q9: جيب كل البيانات دفعة واحدة
     const [unitsRes, paymentsRes, expensesRes, ownerRes, depositsRes, movesRes] = await Promise.all([
-      sb.from('units').select('id, monthly_rent, is_vacant, unit_status'),
+      sb.from('units').select('id, monthly_rent, is_vacant, unit_status, start_date'),
       sb.from('rent_payments')
-        .select('amount, payment_month, payment_date')
-        .gte('payment_date', monthFirst.substring(0, 8) + '01')
-        .lte('payment_date', monthFirst.substring(0, 8) + '31'),
+        .select('amount, payment_month, payment_date, unit_id')
+        .gte('payment_date', monthFirst.slice(0,8) + '01')
+        .lte('payment_date', monthFirst.slice(0,8) + '31'),
       sb.from('expenses').select('amount').eq('period_month', monthFirst),
       sb.from('owner_payments').select('amount').eq('period_month', monthFirst),
-      sb.from('deposits').select('refund_amount').eq('status', 'refunded').gte('refund_date', monthFirst.substring(0, 8) + '01'),
-      sb.from('moves').select('type, status').eq('status', 'pending'),
+      sb.from('deposits').select('refund_amount, refund_date').eq('status','refunded')
+        .gte('refund_date', monthFirst.slice(0,8) + '01'),
+      sb.from('moves').select('type, status'),
     ]);
 
-    // --- حساب KPIs ---
-    const units        = unitsRes.data || [];
+    if (unitsRes.error)    throw unitsRes.error;
+    if (paymentsRes.error) throw paymentsRes.error;
+
+    const units        = unitsRes.data    || [];
     const payments     = paymentsRes.data || [];
     const expenses     = expensesRes.data || [];
-    const ownerPays    = ownerRes.data || [];
+    const ownerPays    = ownerRes.data    || [];
     const refunds      = depositsRes.data || [];
-    const pendingMoves = movesRes.data || [];
+    const allMoves     = movesRes.data    || [];
 
-    // الوحدات
-    const totalUnits    = units.length;
-    const occupied      = units.filter(u => !u.is_vacant && u.unit_status === 'occupied').length;
-    const vacant        = units.filter(u => u.is_vacant).length;
-    const reserved      = units.filter(u => u.unit_status === 'reserved').length;
-    const maintenance   = units.filter(u => u.unit_status === 'maintenance').length;
-    const leavingSoon   = units.filter(u => u.unit_status === 'leaving_soon').length;
+    // ── Stats ──
+    const totalUnits  = units.length;
+    const occupied    = units.filter(u => !u.is_vacant && u.unit_status === 'occupied').length;
+    const vacant      = units.filter(u => u.is_vacant).length;
+    const reserved    = units.filter(u => u.unit_status === 'reserved').length;
+    const maintenance = units.filter(u => u.unit_status === 'maintenance').length;
+    const leavingSoon = units.filter(u => u.unit_status === 'leaving_soon').length;
 
-    // المالي - Cash basis (payment_date هذا الشهر)
-    const totalCollected = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    // جديد هذا الشهر (start_date في نفس الشهر)
+    const newThisMonth = units.filter(u => u.start_date && u.start_date.startsWith(monthFirst.slice(0,7))).length;
 
-    // المالي - Accrual basis (payment_month = الشهر الحالي)
-    const accrualPayments = await sb
-      .from('rent_payments')
-      .select('amount')
-      .eq('payment_month', monthFirst);
-    const accrualCollected = (accrualPayments.data || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    // ── Cash basis (payment_date هذا الشهر) ──
+    const totalCollected = payments.reduce((s,p) => s + parseFloat(p.amount||0), 0);
 
-    // المستهدف
-    const target = units
-      .filter(u => !u.is_vacant && u.unit_status === 'occupied')
-      .reduce((s, u) => s + parseFloat(u.monthly_rent || 0), 0);
+    // ── Accrual basis (payment_month = الشهر الحالي) ──
+    const accrualRes = await sb.from('rent_payments').select('amount').eq('payment_month', monthFirst);
+    if (accrualRes.error) throw accrualRes.error;
+    const accrualCollected = (accrualRes.data||[]).reduce((s,p) => s + parseFloat(p.amount||0), 0);
 
-    const remaining    = Math.max(0, target - accrualCollected);
-    const collRate     = target > 0 ? Math.round((accrualCollected / target) * 100) : 0;
+    const target    = units.filter(u => !u.is_vacant && u.unit_status === 'occupied')
+                           .reduce((s,u) => s + parseFloat(u.monthly_rent||0), 0);
+    const remaining = Math.max(0, target - accrualCollected);
+    const collRate  = target > 0 ? Math.round((accrualCollected / target) * 100) : 0;
 
-    // الصافي
-    const totalExp     = expenses.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-    const totalOwner   = ownerPays.reduce((s, o) => s + parseFloat(o.amount || 0), 0);
-    const totalRefunds = refunds.reduce((s, d) => s + parseFloat(d.refund_amount || 0), 0);
+    const totalExp     = expenses.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+    const totalOwner   = ownerPays.reduce((s,o) => s + parseFloat(o.amount||0), 0);
+    const totalRefunds = refunds.reduce((s,d) => s + parseFloat(d.refund_amount||0), 0);
     const netProfit    = totalCollected - totalExp - totalOwner - totalRefunds;
 
-    const pendingArrivals   = pendingMoves.filter(m => m.type === 'arrive').length;
-    const pendingDepartures = pendingMoves.filter(m => m.type === 'depart').length;
+    const pendingArrivals   = allMoves.filter(m => m.type==='arrive' && m.status==='pending').length;
+    const pendingDepartures = allMoves.filter(m => m.type==='depart' && m.status==='pending').length;
 
-    // --- لون شريط التقدم ---
     const barColor = collRate >= 90 ? 'var(--green)' : collRate >= 60 ? 'var(--amber)' : 'var(--red)';
 
     container.innerHTML = `
 <div class="home-month-label">${Helpers.fmtMonth(monthFirst)}</div>
 
-<!-- KPI Cards -->
 <div class="kpi-grid">
   <div class="kpi-card kpi-green">
     <div class="kpi-icon">💵</div>
     <div class="kpi-value">${Helpers.formatAED(totalCollected)}</div>
-    <div class="kpi-label">إجمالي محصّل</div>
+    <div class="kpi-label">${t('kpi_collected')}</div>
   </div>
   <div class="kpi-card kpi-blue">
     <div class="kpi-icon">🎯</div>
     <div class="kpi-value">${Helpers.formatAED(target)}</div>
-    <div class="kpi-label">المستهدف</div>
+    <div class="kpi-label">${t('kpi_target')}</div>
   </div>
   <div class="kpi-card kpi-amber">
     <div class="kpi-icon">⏳</div>
     <div class="kpi-value">${Helpers.formatAED(remaining)}</div>
-    <div class="kpi-label">المتبقي</div>
+    <div class="kpi-label">${t('kpi_remaining')}</div>
   </div>
   <div class="kpi-card kpi-purple">
     <div class="kpi-icon">📊</div>
-    <div class="kpi-value">${collRate}%</div>
-    <div class="kpi-label">نسبة التحصيل</div>
+    <div class="kpi-value">${String(collRate)}%</div>
+    <div class="kpi-label">${t('kpi_rate')}</div>
   </div>
 </div>
 
-<!-- Progress Bar -->
 <div class="progress-wrap">
   <div class="progress-bar" style="width:${collRate}%; background:${barColor}"></div>
 </div>
 
-<!-- الصافي -->
 <div class="net-card">
-  <span class="net-label">الصافي</span>
+  <span class="net-label">${t('net_profit')}</span>
   <span class="net-value ${netProfit >= 0 ? 'green' : 'red'}">${Helpers.formatAED(netProfit)}</span>
   <div class="net-breakdown">
-    <span>مصاريف: ${Helpers.formatAED(totalExp)}</span>
-    <span>مالك: ${Helpers.formatAED(totalOwner)}</span>
-    <span>مرتجعات: ${Helpers.formatAED(totalRefunds)}</span>
+    <span>${t('expenses_lbl')}: ${Helpers.formatAED(totalExp)}</span>
+    <span>${t('owner_lbl')}: ${Helpers.formatAED(totalOwner)}</span>
+    <span>${t('refunds_lbl')}: ${Helpers.formatAED(totalRefunds)}</span>
   </div>
 </div>
 
-<!-- Status Grid -->
 <div class="status-grid">
-  <div class="stat-item">
-    <span class="stat-val stat-green">${occupied}</span>
-    <span class="stat-lbl">مشغولة</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-val stat-muted">${vacant}</span>
-    <span class="stat-lbl">شاغرة</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-val stat-amber">${leavingSoon}</span>
-    <span class="stat-lbl">مغادرة</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-val stat-blue">${reserved}</span>
-    <span class="stat-lbl">محجوزة</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-val stat-red">${maintenance}</span>
-    <span class="stat-lbl">صيانة</span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-val">${totalUnits}</span>
-    <span class="stat-lbl">إجمالي</span>
-  </div>
+  <div class="stat-item"><span class="stat-val stat-green">${String(occupied)}</span><span class="stat-lbl">${t('stat_occupied')}</span></div>
+  <div class="stat-item"><span class="stat-val stat-muted">${String(vacant)}</span><span class="stat-lbl">${t('stat_vacant')}</span></div>
+  <div class="stat-item"><span class="stat-val stat-amber">${String(leavingSoon)}</span><span class="stat-lbl">${t('stat_leaving')}</span></div>
+  <div class="stat-item"><span class="stat-val stat-blue">${String(reserved)}</span><span class="stat-lbl">${t('stat_reserved')}</span></div>
+  <div class="stat-item"><span class="stat-val stat-red">${String(maintenance)}</span><span class="stat-lbl">${t('stat_maintenance')}</span></div>
+  <div class="stat-item"><span class="stat-val stat-green">${String(newThisMonth)}</span><span class="stat-lbl">${t('stat_new')}</span></div>
 </div>
 
-<!-- حجوزات وتنقلات -->
 ${(pendingArrivals + pendingDepartures) > 0 ? `
 <div class="pending-moves">
-  ${pendingArrivals > 0 ? `<div class="pending-chip chip-green" onclick="goPanel('moves')">🆕 ${pendingArrivals} حجز جديد</div>` : ''}
-  ${pendingDepartures > 0 ? `<div class="pending-chip chip-amber" onclick="goPanel('moves')">🚪 ${pendingDepartures} مغادرة pending</div>` : ''}
+  ${pendingArrivals   > 0 ? `<div class="pending-chip chip-green" onclick="goPanel('moves')">🆕 ${pendingArrivals} ${t('pending_arrivals')}</div>` : ''}
+  ${pendingDepartures > 0 ? `<div class="pending-chip chip-amber" onclick="goPanel('moves')">🚪 ${pendingDepartures} ${t('pending_departures')}</div>` : ''}
 </div>` : ''}
 
-<!-- الوصول السريع -->
+<div class="section-title">${t('quick_access')}</div>
 <div class="quick-links">
-  <button class="quick-btn" onclick="goPanel('units')"><span>🏠 الوحدات</span></button>
-  <button class="quick-btn" onclick="goPanel('pay')"><span>💰 تسجيل دفعة</span></button>
-  <button class="quick-btn" onclick="goPanel('reports')"><span>📋 التقارير</span></button>
-  <button class="quick-btn" onclick="goPanel('moves')"><span>🚀 التنقلات</span></button>
+  <button class="quick-btn" onclick="goPanel('units')"><span>${t('quick_units')}</span></button>
+  <button class="quick-btn" onclick="goPanel('pay')"><span>${t('quick_pay')}</span></button>
+  <button class="quick-btn" onclick="goPanel('reports')"><span>${t('quick_reports')}</span></button>
+  <button class="quick-btn" onclick="goPanel('moves')"><span>${t('quick_moves')}</span></button>
 </div>
+
+<div class="section-title" style="margin-top:20px">${t('late_payers_title')}</div>
+<div id="late-payers-list"><div class="loading" style="padding:20px">⏳</div></div>
 `;
+
+    // تحميل المتأخرون بعد render الصفحة
+    loadLatePayers(monthFirst, units, accrualRes.data || []);
+
   } catch (err) {
     console.error('loadHome error:', err);
     container.innerHTML = `<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`;
   }
+}
+
+// ─────────────────────────────────────────
+// loadLatePayers — المتأخرون عن الدفع
+// ─────────────────────────────────────────
+async function loadLatePayers(monthFirst, units, paidThisMonth) {
+  const container = document.getElementById('late-payers-list');
+  if (!container) return;
+
+  try {
+    // بناء map للمدفوعين هذا الشهر
+    const paidMap = {};
+    paidThisMonth.forEach(p => {
+      paidMap[p.unit_id] = (paidMap[p.unit_id] || 0) + parseFloat(p.amount || 0);
+    });
+
+    // الوحدات المشغولة اللي ما دفعتش
+    const lateUnits = units.filter(u => {
+      if (u.is_vacant || u.unit_status !== 'occupied') return false;
+      const paid = paidMap[u.id] || 0;
+      const required = parseFloat(u.monthly_rent || 0);
+      return required > 0 && paid < required;
+    });
+
+    // جيب تفاصيل الوحدات المتأخرة
+    if (lateUnits.length === 0) {
+      container.innerHTML = `<div class="empty-msg" style="padding:16px">✅ ${t('no_late_payers')}</div>`;
+      return;
+    }
+
+    const unitIds = lateUnits.map(u => u.id);
+    const { data: details, error } = await sb
+      .from('units')
+      .select('id, apartment, room, tenant_name, phone, monthly_rent, language')
+      .in('id', unitIds);
+    if (error) throw error;
+
+    // إرسال جماعي
+    const bulkBtn = `
+      <button class="btn btn-whatsapp btn-full" style="margin-bottom:10px"
+        onclick="sendBulkReminder()">
+        💬 ${t('send_bulk_reminder')} (${lateUnits.length})
+      </button>`;
+
+    const rows = (details || []).map(u => {
+      const paid = paidMap[u.id] || 0;
+      const due  = Math.max(0, parseFloat(u.monthly_rent||0) - paid);
+      return `
+      <div class="late-card">
+        <div class="late-info">
+          <span class="late-unit">${t('apt_label')} ${Helpers.escapeHtml(u.apartment)} — ${t('room_label')} ${Helpers.escapeHtml(u.room)}</span>
+          <span class="late-name">${Helpers.escapeHtml(u.tenant_name || '—')}</span>
+          <span class="late-due red">${t('remaining_prefix')}: ${Helpers.formatAED(due)}</span>
+        </div>
+        ${u.phone ? `
+        <button class="icon-btn" onclick="sendSingleReminder('${u.id}','${Helpers.escapeHtml(u.phone)}','${Helpers.escapeHtml(u.tenant_name||'')}',${due},'${u.language||'AR'}')">
+          💬
+        </button>` : ''}
+      </div>`;
+    }).join('');
+
+    container.innerHTML = bulkBtn + `<div class="late-list">${rows}</div>`;
+
+    // حفظ للـ bulk send
+    window._lateUnitsDetails = details || [];
+    window._paidMap = paidMap;
+    window._currentMonth = monthFirst;
+
+  } catch (err) {
+    console.error('loadLatePayers error:', err);
+    container.innerHTML = `<div class="error-msg" style="padding:10px">❌ ${Helpers.escapeHtml(err.message)}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────
+// sendSingleReminder
+// ─────────────────────────────────────────
+function sendSingleReminder(unitId, phone, name, due, lang) {
+  const unit = { tenant_name: name, apartment: '', room: '' };
+  const msg  = Helpers.rentReminderMsg(unit, window._currentMonth || Helpers.currentMonthFirst(), due, lang);
+  Helpers.openWhatsApp(phone, msg);
+}
+
+// ─────────────────────────────────────────
+// sendBulkReminder — إرسال جماعي
+// ─────────────────────────────────────────
+function sendBulkReminder() {
+  const units  = window._lateUnitsDetails || [];
+  const paidMap = window._paidMap || {};
+  const month  = window._currentMonth || Helpers.currentMonthFirst();
+
+  if (units.length === 0) return;
+
+  let i = 0;
+  function sendNext() {
+    if (i >= units.length) { toast(t('bulk_sent'), 'success'); return; }
+    const u   = units[i++];
+    const due = Math.max(0, parseFloat(u.monthly_rent||0) - (paidMap[u.id]||0));
+    if (u.phone && due > 0) {
+      const msg = Helpers.rentReminderMsg(u, month, due, (u.language||'AR'));
+      Helpers.openWhatsApp(u.phone, msg);
+    }
+    // تأخير بسيط بين كل رسالة
+    setTimeout(sendNext, 600);
+  }
+  sendNext();
 }

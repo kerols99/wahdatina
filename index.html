@@ -23,18 +23,18 @@
   <div class="login-card">
     <div class="login-logo">🏢</div>
     <div class="login-title">واحدتنا</div>
-    <div class="login-sub">إدارة الوحدات السكنية — دبي</div>
+    <div class="login-sub" data-i18n="login_subtitle">إدارة الوحدات السكنية — دبي</div>
 
     <div class="form-group">
-      <label>البريد الإلكتروني</label>
+      <label data-i18n="login_email">البريد الإلكتروني</label>
       <input type="email" id="login-email" placeholder="admin@example.com" autocomplete="email">
     </div>
     <div class="form-group">
-      <label>كلمة المرور</label>
+      <label data-i18n="login_password">كلمة المرور</label>
       <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"
              onkeydown="if(event.key==='Enter') handleLogin(event)">
     </div>
-    <button id="login-btn" class="btn btn-primary btn-full" onclick="handleLogin(event)">
+    <button id="login-btn" class="btn btn-primary btn-full" onclick="handleLogin(event)" data-i18n="login_btn">
       دخول
     </button>
   </div>
@@ -43,14 +43,15 @@
 <!-- ═══════════════════════════════
      APP SCREEN
 ═══════════════════════════════ -->
-<div id="app-screen" style="display:none; flex-direction:column; width:100%; max-width:520px;">
+<div id="app-screen" style="display:none; flex-direction:column; width:100%;">
 
   <!-- Header -->
   <header class="app-header">
     <div class="app-title">🏢 واحدتنا</div>
     <div class="header-actions">
-      <button class="icon-action-btn" onclick="openThemePanel()" title="تغيير الثيم">🎨</button>
-      <button class="icon-action-btn" onclick="handleLogout()" title="خروج">خروج</button>
+      <button id="lang-btn" class="icon-action-btn" onclick="toggleLang()">EN</button>
+      <button class="icon-action-btn" onclick="openThemePanel()" title="Theme">🎨</button>
+      <button class="icon-action-btn" onclick="handleLogout()" data-i18n="logout">خروج</button>
     </div>
   </header>
 
@@ -59,215 +60,228 @@
 
     <!-- ■ Home Panel -->
     <div id="panel-home" class="panel active">
-      <div id="home-content"><div class="loading">⏳ جاري التحميل...</div></div>
+      <div id="home-content"><div class="loading" data-i18n="loading">⏳ جاري التحميل...</div></div>
     </div>
 
     <!-- ■ Units Panel -->
     <div id="panel-units" class="panel">
       <div class="units-toolbar">
         <input type="search" id="units-search" class="search-input"
+               data-i18n="search_placeholder" data-i18n-attr="placeholder"
                placeholder="🔍 ابحث باسم المستأجر أو رقم الشقة..."
                oninput="setUnitsSearch(this.value)">
         <div class="filter-row">
-          <button class="filter-btn active" data-filter="all"     onclick="setUnitsFilter('all')">الكل</button>
-          <button class="filter-btn"        data-filter="paid"    onclick="setUnitsFilter('paid')">مدفوع</button>
-          <button class="filter-btn"        data-filter="partial" onclick="setUnitsFilter('partial')">جزئي</button>
-          <button class="filter-btn"        data-filter="unpaid"  onclick="setUnitsFilter('unpaid')">غير مدفوع</button>
+          <button class="filter-btn active" data-filter="all"     onclick="setUnitsFilter('all')"     data-i18n="filter_all">الكل</button>
+          <button class="filter-btn"        data-filter="paid"    onclick="setUnitsFilter('paid')"    data-i18n="filter_paid">مدفوع</button>
+          <button class="filter-btn"        data-filter="partial" onclick="setUnitsFilter('partial')" data-i18n="filter_partial">جزئي</button>
+          <button class="filter-btn"        data-filter="unpaid"  onclick="setUnitsFilter('unpaid')"  data-i18n="filter_unpaid">غير مدفوع</button>
         </div>
       </div>
-      <button class="add-unit-btn" onclick="openAddUnit()">➕ إضافة وحدة جديدة</button>
+      <button class="add-unit-btn" onclick="openAddUnit()" data-i18n="add_unit">➕ إضافة وحدة جديدة</button>
       <div id="units-list"><div class="loading">⏳</div></div>
     </div>
 
     <!-- ■ Pay Panel -->
     <div id="panel-pay" class="panel">
       <div class="pay-tabs">
-        <button class="pay-tab-btn active" data-tab="rent"    onclick="switchPayTab('rent')">💰 إيجار</button>
-        <button class="pay-tab-btn"        data-tab="expense" onclick="switchPayTab('expense')">💸 مصروف</button>
-        <button class="pay-tab-btn"        data-tab="owner"   onclick="switchPayTab('owner')">👤 مالك</button>
-        <button class="pay-tab-btn"        data-tab="deposit" onclick="switchPayTab('deposit')">🔐 تأمين</button>
+        <button class="pay-tab-btn active" data-tab="rent"    onclick="switchPayTab('rent')"    data-i18n="tab_rent">💰 إيجار</button>
+        <button class="pay-tab-btn"        data-tab="expense" onclick="switchPayTab('expense')" data-i18n="tab_expense">💸 مصروف</button>
+        <button class="pay-tab-btn"        data-tab="owner"   onclick="switchPayTab('owner')"   data-i18n="tab_owner">👤 مالك</button>
+        <button class="pay-tab-btn"        data-tab="deposit" onclick="switchPayTab('deposit')" data-i18n="tab_deposit">🔐 تأمين</button>
       </div>
 
-      <!-- إيجار -->
+      <!-- Rent -->
       <div id="pay-section-rent" class="pay-section active">
         <input type="hidden" id="pay-unit-id">
         <div class="form-row">
           <div class="form-group">
-            <label>رقم الشقة *</label>
+            <label data-i18n="pay_apt">رقم الشقة *</label>
             <input type="text" id="pay-apt" placeholder="101" onblur="autoFillRent()">
           </div>
           <div class="form-group">
-            <label>رقم الغرفة *</label>
+            <label data-i18n="pay_room">رقم الغرفة *</label>
             <input type="text" id="pay-room" placeholder="A" onblur="autoFillRent()">
           </div>
         </div>
         <div class="form-group">
-          <label>اسم المستأجر</label>
-          <input type="text" id="pay-tenant" placeholder="يُملأ تلقائياً">
+          <label data-i18n="pay_tenant">اسم المستأجر</label>
+          <input type="text" id="pay-tenant"
+                 data-i18n="pay_autofill" data-i18n-attr="placeholder"
+                 placeholder="يُملأ تلقائياً">
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>المبلغ *</label>
+            <label data-i18n="pay_amount">المبلغ *</label>
             <input type="number" id="pay-amount" placeholder="0">
           </div>
           <div class="form-group">
-            <label>المستأجر</label>
+            <label data-i18n="pay_tenant_num">المستأجر</label>
             <select id="pay-tenant-num">
-              <option value="1">مستأجر 1</option>
-              <option value="2">مستأجر 2</option>
+              <option value="1" data-i18n="pay_t1">مستأجر 1</option>
+              <option value="2" data-i18n="pay_t2">مستأجر 2</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>شهر الإيجار *</label>
+            <label data-i18n="pay_month">شهر الإيجار *</label>
             <input type="month" id="pay-month">
           </div>
           <div class="form-group">
-            <label>تاريخ الاستلام *</label>
+            <label data-i18n="pay_date">تاريخ الاستلام *</label>
             <input type="date" id="pay-date">
           </div>
         </div>
         <div class="form-group">
-          <label>طريقة الدفع</label>
+          <label data-i18n="pay_method">طريقة الدفع</label>
           <select id="pay-method">
-            <option value="Cash">كاش</option>
-            <option value="Transfer">تحويل</option>
-            <option value="Cheque">شيك</option>
+            <option value="Cash"     data-i18n="pay_cash">كاش</option>
+            <option value="Transfer" data-i18n="pay_transfer">تحويل</option>
+            <option value="Cheque"   data-i18n="pay_cheque">شيك</option>
           </select>
         </div>
         <div class="form-group">
-          <label>ملاحظات</label>
-          <textarea id="pay-notes" rows="2" placeholder="اختياري"></textarea>
+          <label data-i18n="pay_notes">ملاحظات</label>
+          <textarea id="pay-notes" rows="2"
+                    data-i18n="uf_optional" data-i18n-attr="placeholder"
+                    placeholder="اختياري"></textarea>
         </div>
-        <button id="save-rent-btn" class="btn btn-primary btn-full" onclick="saveRent()">
+        <button id="save-rent-btn" class="btn btn-primary btn-full" onclick="saveRent()" data-i18n="pay_btn">
           💰 تسجيل الدفعة
         </button>
       </div>
 
-      <!-- مصروف -->
+      <!-- Expense -->
       <div id="pay-section-expense" class="pay-section">
         <div class="form-group">
-          <label>الفئة</label>
-          <input type="text" id="exp-cat" placeholder="كهرباء / صيانة / تنظيف...">
+          <label data-i18n="exp_cat">الفئة</label>
+          <input type="text" id="exp-cat"
+                 data-i18n="exp_cat_ph" data-i18n-attr="placeholder"
+                 placeholder="كهرباء / صيانة / تنظيف...">
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>المبلغ *</label>
+            <label data-i18n="exp_amount">المبلغ *</label>
             <input type="number" id="exp-amount" placeholder="0">
           </div>
           <div class="form-group">
-            <label>الشهر *</label>
+            <label data-i18n="exp_month">الشهر *</label>
             <input type="month" id="exp-month">
           </div>
         </div>
         <div class="form-group">
-          <label>الوصف</label>
-          <input type="text" id="exp-desc" placeholder="تفاصيل المصروف">
+          <label data-i18n="exp_desc">الوصف</label>
+          <input type="text" id="exp-desc" placeholder="">
         </div>
         <div class="form-group">
-          <label>رقم الإيصال</label>
-          <input type="text" id="exp-receipt" placeholder="اختياري">
+          <label data-i18n="exp_receipt">رقم الإيصال</label>
+          <input type="text" id="exp-receipt"
+                 data-i18n="uf_optional" data-i18n-attr="placeholder"
+                 placeholder="اختياري">
         </div>
-        <button class="btn btn-primary btn-full" onclick="saveExpense()">
+        <button class="btn btn-primary btn-full" onclick="saveExpense()" data-i18n="exp_btn">
           💸 تسجيل المصروف
         </button>
       </div>
 
-      <!-- مالك -->
+      <!-- Owner -->
       <div id="pay-section-owner" class="pay-section">
         <div class="form-row">
           <div class="form-group">
-            <label>المبلغ *</label>
+            <label data-i18n="own_amount">المبلغ *</label>
             <input type="number" id="own-amount" placeholder="0">
           </div>
           <div class="form-group">
-            <label>الشهر *</label>
+            <label data-i18n="own_month">الشهر *</label>
             <input type="month" id="own-month">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>تاريخ الدفع</label>
+            <label data-i18n="own_date">تاريخ الدفع</label>
             <input type="date" id="own-date">
           </div>
           <div class="form-group">
-            <label>طريقة الدفع</label>
+            <label data-i18n="own_method">طريقة الدفع</label>
             <select id="own-method">
-              <option value="Cash">كاش</option>
-              <option value="Transfer">تحويل</option>
-              <option value="Cheque">شيك</option>
+              <option value="Cash"     data-i18n="pay_cash">كاش</option>
+              <option value="Transfer" data-i18n="pay_transfer">تحويل</option>
+              <option value="Cheque"   data-i18n="pay_cheque">شيك</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label>المرجع</label>
-          <input type="text" id="own-ref" placeholder="رقم التحويل / المرجع">
+          <label data-i18n="own_ref">المرجع</label>
+          <input type="text" id="own-ref"
+                 data-i18n="own_ref_ph" data-i18n-attr="placeholder"
+                 placeholder="رقم التحويل / المرجع">
         </div>
         <div class="form-group">
-          <label>ملاحظات</label>
-          <textarea id="own-notes" rows="2" placeholder="اختياري"></textarea>
+          <label data-i18n="own_notes">ملاحظات</label>
+          <textarea id="own-notes" rows="2"
+                    data-i18n="uf_optional" data-i18n-attr="placeholder"
+                    placeholder="اختياري"></textarea>
         </div>
-        <button class="btn btn-primary btn-full" onclick="saveOwnerPayment()">
+        <button class="btn btn-primary btn-full" onclick="saveOwnerPayment()" data-i18n="own_btn">
           👤 تسجيل دفعة المالك
         </button>
       </div>
 
-      <!-- تأمين -->
+      <!-- Deposit -->
       <div id="pay-section-deposit" class="pay-section">
         <div class="form-row">
           <div class="form-group">
-            <label>رقم الشقة *</label>
+            <label data-i18n="dep_apt">رقم الشقة *</label>
             <input type="text" id="dep-apt" placeholder="101">
           </div>
           <div class="form-group">
-            <label>رقم الغرفة *</label>
+            <label data-i18n="dep_room">رقم الغرفة *</label>
             <input type="text" id="dep-room" placeholder="A">
           </div>
         </div>
         <div class="form-group">
-          <label>اسم المستأجر</label>
-          <input type="text" id="dep-tenant" placeholder="اسم المستأجر">
+          <label data-i18n="dep_tenant">اسم المستأجر</label>
+          <input type="text" id="dep-tenant">
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>مبلغ التأمين</label>
+            <label data-i18n="dep_amount">مبلغ التأمين</label>
             <input type="number" id="dep-amount" placeholder="0">
           </div>
           <div class="form-group">
-            <label>الحالة</label>
+            <label data-i18n="dep_status">الحالة</label>
             <select id="dep-status">
-              <option value="held">محتجز</option>
-              <option value="refunded">مُسترد</option>
-              <option value="forfeited">مصادر</option>
+              <option value="held"      data-i18n="dep_held">محتجز</option>
+              <option value="refunded"  data-i18n="dep_refunded">مُسترد</option>
+              <option value="forfeited" data-i18n="dep_forfeited">مصادر</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>المبلغ المُسترد</label>
+            <label data-i18n="dep_refund_amt">المبلغ المُسترد</label>
             <input type="number" id="dep-refund" placeholder="0">
           </div>
           <div class="form-group">
-            <label>الخصم</label>
+            <label data-i18n="dep_deduct">الخصم</label>
             <input type="number" id="dep-deduct" placeholder="0">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>تاريخ الاستلام</label>
+            <label data-i18n="dep_recv_date">تاريخ الاستلام</label>
             <input type="date" id="dep-received-date">
           </div>
           <div class="form-group">
-            <label>تاريخ الرد</label>
+            <label data-i18n="dep_ref_date">تاريخ الرد</label>
             <input type="date" id="dep-refund-date">
           </div>
         </div>
         <div class="form-group">
-          <label>ملاحظات</label>
-          <textarea id="dep-notes" rows="2" placeholder="مثال: عربون حجز"></textarea>
+          <label data-i18n="dep_notes">ملاحظات</label>
+          <textarea id="dep-notes" rows="2" placeholder="عربون حجز"></textarea>
         </div>
-        <button class="btn btn-primary btn-full" onclick="saveDeposit()">
+        <button class="btn btn-primary btn-full" onclick="saveDeposit()" data-i18n="dep_btn">
           🔐 تسجيل التأمين
         </button>
       </div>
@@ -288,19 +302,19 @@
   <!-- Bottom Nav -->
   <nav class="bottom-nav">
     <button class="nav-btn active" data-panel="home"    onclick="goPanel('home')">
-      <span class="nav-icon">🏠</span>الرئيسية
+      <span class="nav-icon">🏠</span><span data-i18n="nav_home">الرئيسية</span>
     </button>
     <button class="nav-btn" data-panel="units"   onclick="goPanel('units')">
-      <span class="nav-icon">🏢</span>الوحدات
+      <span class="nav-icon">🏢</span><span data-i18n="nav_units">الوحدات</span>
     </button>
     <button class="nav-btn" data-panel="pay"     onclick="goPanel('pay')">
-      <span class="nav-icon">💰</span>إضافة
+      <span class="nav-icon">💰</span><span data-i18n="nav_pay">إضافة</span>
     </button>
     <button class="nav-btn" data-panel="reports" onclick="goPanel('reports')">
-      <span class="nav-icon">📊</span>التقارير
+      <span class="nav-icon">📊</span><span data-i18n="nav_reports">التقارير</span>
     </button>
     <button class="nav-btn" data-panel="moves"   onclick="goPanel('moves')">
-      <span class="nav-icon">🚀</span>التنقلات
+      <span class="nav-icon">🚀</span><span data-i18n="nav_moves">التنقلات</span>
     </button>
   </nav>
 
@@ -309,58 +323,40 @@
 <!-- Theme Panel -->
 <div id="theme-panel" onclick="closeThemePanel(event)">
   <div class="theme-sheet">
-    <div class="theme-sheet-title">🎨 اختر الثيم</div>
+    <div class="theme-sheet-title" data-i18n="theme_title">🎨 اختر الثيم</div>
     <div class="theme-grid">
-
-      <div class="theme-swatch sw-indigo active" id="sw-default" onclick="applyTheme('default')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <div class="theme-swatch-name">Indigo Dark</div>
+      <div class="theme-swatch sw-indigo active" id="sw-default"   onclick="applyTheme('default')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
+        <div class="theme-swatch-name">Indigo</div>
       </div>
-
-      <div class="theme-swatch sw-choc" id="sw-chocolate" onclick="applyTheme('chocolate')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <div class="theme-swatch-name">Chocolate Truffle</div>
+      <div class="theme-swatch sw-choc"   id="sw-chocolate" onclick="applyTheme('chocolate')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
+        <div class="theme-swatch-name">Chocolate</div>
       </div>
-
-      <div class="theme-swatch sw-forest" id="sw-forest" onclick="applyTheme('forest')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <div class="theme-swatch-name">Lush Forest</div>
+      <div class="theme-swatch sw-forest" id="sw-forest"    onclick="applyTheme('forest')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
+        <div class="theme-swatch-name">Forest</div>
       </div>
-
-      <div class="theme-swatch sw-olive" id="sw-olive" onclick="applyTheme('olive')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
+      <div class="theme-swatch sw-olive"  id="sw-olive"     onclick="applyTheme('olive')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
         <div class="theme-swatch-name">Olive</div>
       </div>
-
-      <div class="theme-swatch sw-navy" id="sw-navy" onclick="applyTheme('navy')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <div class="theme-swatch-name">Navy Deep</div>
+      <div class="theme-swatch sw-navy"   id="sw-navy"      onclick="applyTheme('navy')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
+        <div class="theme-swatch-name">Navy</div>
       </div>
-
-      <div class="theme-swatch sw-ink" id="sw-ink" onclick="applyTheme('ink')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
+      <div class="theme-swatch sw-ink"    id="sw-ink"       onclick="applyTheme('ink')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
         <div class="theme-swatch-name">Ink Wash</div>
       </div>
-
-      <div class="theme-swatch sw-teal" id="sw-teal" onclick="applyTheme('teal')">
-        <div class="swatch-colors">
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <div class="theme-swatch-name">Teal Cyan</div>
+      <div class="theme-swatch sw-teal"   id="sw-teal"      onclick="applyTheme('teal')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
+        <div class="theme-swatch-name">Teal</div>
       </div>
-
+      <div class="theme-swatch sw-light"  id="sw-light"     onclick="applyTheme('light')">
+        <div class="swatch-colors"><span></span><span></span><span></span><span></span></div>
+        <div class="theme-swatch-name">Light ☀️</div>
+      </div>
     </div>
   </div>
 </div>
@@ -376,38 +372,37 @@
 <div id="toast-container"></div>
 
 <!-- ═══════════════════════════════
-     SCRIPTS
+     SCRIPTS — ORDER MATTERS
 ═══════════════════════════════ -->
-<!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-
-<!-- App Scripts (ORDER MATTERS) -->
 <script src="helpers.js"></script>
 <script src="config.js"></script>
+<script src="i18n.js"></script>
 <script src="auth.js"></script>
 <script src="units.js"></script>
 <script src="payments.js"></script>
 <script src="dashboard.js"></script>
+<script src="reports.js"></script>
 <script src="moves.js"></script>
 
-<!-- Init -->
 <script>
-  // ضبط قيم افتراضية لتواريخ النماذج
   document.addEventListener('DOMContentLoaded', () => {
+    // ضبط تواريخ النماذج
     const monthFirst = Helpers.currentMonthFirst();
     const todayStr   = Helpers.today();
-    // شهور
     ['pay-month','exp-month','own-month'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.value = monthFirst.substring(0,7); // YYYY-MM للـ input[type=month]
+      if (el) el.value = monthFirst.substring(0,7);
     });
-    // تواريخ
     ['pay-date','own-date','dep-received-date'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = todayStr;
     });
 
-    // تسجيل Service Worker
+    // تطبيق اللغة المحفوظة
+    applyLang();
+
+    // Service Worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(console.warn);
     }

@@ -104,7 +104,7 @@ function closeDrawer() {
 // ══════════════════════════
 // Theme System — 6 Themes
 // ══════════════════════════
-const THEMES = ['default', 'chocolate', 'forest', 'olive', 'navy', 'ink', 'teal'];
+const THEMES = ['default', 'chocolate', 'forest', 'olive', 'navy', 'ink', 'teal', 'light'];
 
 function applyTheme(themeName) {
   if (!THEMES.includes(themeName)) themeName = 'default';
@@ -126,7 +126,7 @@ function applyTheme(themeName) {
   document.getElementById(activeId)?.classList.add('active');
 
   closeThemePanel();
-  toast('✅ تم تغيير الثيم', 'success');
+  toast(t('theme_changed'), 'success');
 }
 
 function openThemePanel() {
@@ -139,16 +139,6 @@ function closeThemePanel(e) {
   if (e && e.target !== document.getElementById('theme-panel')) return;
   document.getElementById('theme-panel')?.classList.remove('open');
   document.body.style.overflow = '';
-}
-
-// ══════════════════════════
-// Lang Toggle
-// ══════════════════════════
-function toggleLang() {
-  LANG = LANG === 'ar' ? 'en' : 'ar';
-  document.documentElement.setAttribute('lang', LANG);
-  document.documentElement.setAttribute('dir', LANG === 'ar' ? 'rtl' : 'ltr');
-  localStorage.setItem('wn_lang', LANG);
 }
 
 // ══════════════════════════

@@ -53,11 +53,11 @@ async function handleLogin(e) {
     if (error) throw error;
 
     ME = { id: data.user.id, email: data.user.email };
-    toast('مرحباً بك 👋', 'success');
+    toast(t('welcome'), 'success');
     showApp();
   } catch (err) {
     console.error('Login error:', err);
-    toast('بيانات الدخول غير صحيحة', 'error');
+    toast(t('login_error'), 'error');
   } finally {
     if (btnEl) {
       btnEl.disabled = false;
@@ -74,7 +74,7 @@ async function handleLogout() {
     const { error } = await sb.auth.signOut();
     if (error) throw error;
     ME = null;
-    toast('تم تسجيل الخروج', 'info');
+    toast(t('logout_success'), 'info');
     showLogin();
   } catch (err) {
     console.error('Logout error:', err);
@@ -98,14 +98,7 @@ function showApp() {
   if (loginScreen) loginScreen.style.display = 'none';
   if (appScreen)   appScreen.style.display   = 'flex';
 
-  // تحميل الرئيسية + تفعيل الحجوزات المجدولة
   goPanel('home');
-
-  // تشغيل scheduler مرة واحدة فقط
-  if (!window._schedulerRan) {
-    window._schedulerRan = true;
-    activateScheduled?.();
-  }
 }
 
 // ══════════════════════════

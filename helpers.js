@@ -6,10 +6,10 @@
 
 const Helpers = (() => {
 
-  // تنسيق المبلغ بالدرهم
+  // تنسيق المبلغ بالدرهم — أرقام إنجليزية دائماً
   function formatAED(amount) {
     const n = parseFloat(amount) || 0;
-    return n.toLocaleString('en-AE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' AED';
+    return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' AED';
   }
 
   // تنسيق التاريخ للعرض
