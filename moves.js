@@ -781,14 +781,10 @@ function previewWelcomeLetter() {
   iframe.contentDocument.close();
 }
 
-function printWelcomeLetter() {
+async function printWelcomeLetter() {
   const data = getWelcomeFormData();
   if (!data.name || !data.apt) { toast(t('toast_apt_required'), 'error'); return; }
-  const win = window.open('', '_blank');
-  win.document.write(buildWelcomeHTML(data));
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 500);
+  await exportPDF(t('moves_welcome') + ' — ' + Helpers.escapeHtml(data.name), buildWelcomeHTML(data));
 }
 
 function getWelcomeFormData() {

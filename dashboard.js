@@ -60,7 +60,10 @@ async function loadHome() {
     const totalCollected = payments.reduce((s,p) => s + parseFloat(p.amount||0), 0);
 
     // ── Accrual basis (payment_month = الشهر الحالي) ──
-    const accrualRes = await sb.from('rent_payments').select('amount').eq('payment_month', monthFirst);
+    // جيب المدفوعات مع unit_id و tenant_num للـ late payers و dual-tenant
+    const accrualRes = await sb.from('rent_payments')
+      .select('unit_id, amount, tenant_num')
+      .eq('payment_month', monthFirst);
     if (accrualRes.error) throw accrualRes.error;
     const accrualCollected = (accrualRes.data||[]).reduce((s,p) => s + parseFloat(p.amount||0), 0);
 
@@ -186,7 +189,7 @@ async function loadLatePayers(monthFirst, units, paidThisMonth) {
     const unitIds = lateUnits.map(u => u.id);
     const { data: details, error } = await sb
       .from('units')
-      .select('id, apartment, room, tenant_name, phone, monthly_rent, language')
+      .select('id, apartment, room, tenant_name, tenant_name2, phone, phone2, monthly_rent, rent1, rent2, language')
       .in('id', unitIds);
     if (error) throw error;
 
@@ -198,19 +201,34 @@ async function loadLatePayers(monthFirst, units, paidThisMonth) {
       </button>`;
 
     const rows = (details || []).map(u => {
-      const paid = paidMap[u.id] || 0;
-      const due  = Math.max(0, parseFloat(u.monthly_rent||0) - paid);
+      const paid  = paidMap[u.id]  || 0;
+      const paid1 = paid1Map[u.id] || 0;
+      const paid2 = paid2Map[u.id] || 0;
+      const due   = Math.max(0, parseFloat(u.monthly_rent||0) - paid);
+      const due1  = Math.max(0, parseFloat(u.rent1||0) - paid1);
+      const due2  = Math.max(0, parseFloat(u.rent2||0) - paid2);
+      const hasDual = u.tenant_name2 && u.rent2 > 0;
+
       return `
       <div class="late-card">
         <div class="late-info">
           <span class="late-unit">${t('apt_label')} ${Helpers.escapeHtml(u.apartment)} — ${t('room_label')} ${Helpers.escapeHtml(u.room)}</span>
           <span class="late-name">${Helpers.escapeHtml(u.tenant_name || '—')}</span>
+          ${hasDual ? `<span class="late-name muted small">& ${Helpers.escapeHtml(u.tenant_name2)}</span>` : ''}
           <span class="late-due red">${t('remaining_prefix')}: ${Helpers.formatAED(due)}</span>
         </div>
-        ${u.phone ? `
-        <button class="icon-btn" onclick="sendSingleReminder('${u.id}','${Helpers.escapeHtml(u.phone)}','${Helpers.escapeHtml(u.tenant_name||'')}',${due},'${u.language||'AR'}')">
-          💬
-        </button>` : ''}
+        <div style="display:flex;gap:6px">
+          ${u.phone ? `
+          <button class="icon-btn" title="${Helpers.escapeHtml(u.tenant_name||'')}"
+            onclick="sendSingleReminder('${u.id}','${Helpers.escapeHtml(u.phone)}','${Helpers.escapeHtml(u.tenant_name||'')}',${hasDual?due1:due},'${u.language||'AR'}')">
+            💬
+          </button>` : ''}
+          ${hasDual && u.phone2 && due2 > 0 ? `
+          <button class="icon-btn" title="${Helpers.escapeHtml(u.tenant_name2||'')}"
+            onclick="sendSingleReminder('${u.id}','${Helpers.escapeHtml(u.phone2)}','${Helpers.escapeHtml(u.tenant_name2||'')}',${due2},'${u.language||'AR'}')">
+            💬2
+          </button>` : ''}
+        </div>
       </div>`;
     }).join('');
 
@@ -218,7 +236,9 @@ async function loadLatePayers(monthFirst, units, paidThisMonth) {
 
     // حفظ للـ bulk send
     window._lateUnitsDetails = details || [];
-    window._paidMap = paidMap;
+    window._paidMap  = paidMap;
+    window._paid1Map = paid1Map;
+    window._paid2Map = paid2Map;
     window._currentMonth = monthFirst;
 
   } catch (err) {
@@ -237,25 +257,49 @@ function sendSingleReminder(unitId, phone, name, due, lang) {
 }
 
 // ─────────────────────────────────────────
-// sendBulkReminder — إرسال جماعي
+// sendBulkReminder — إرسال جماعي مع دعم المستأجرين الاتنين
 // ─────────────────────────────────────────
 function sendBulkReminder() {
-  const units  = window._lateUnitsDetails || [];
-  const paidMap = window._paidMap || {};
-  const month  = window._currentMonth || Helpers.currentMonthFirst();
+  const units   = window._lateUnitsDetails || [];
+  const paid1Map = window._paid1Map || window._paidMap || {};
+  const paid2Map = window._paid2Map || {};
+  const month   = window._currentMonth || Helpers.currentMonthFirst();
 
   if (units.length === 0) return;
 
+  // بناء قائمة الرسائل المطلوبة (قد يكون في وحدة رسالتان)
+  const queue = [];
+  units.forEach(u => {
+    const hasDual = u.tenant_name2 && parseFloat(u.rent2 || 0) > 0;
+
+    if (hasDual) {
+      // مستأجر 1
+      const due1 = Math.max(0, parseFloat(u.rent1||0) - (paid1Map[u.id]||0));
+      if (u.phone && due1 > 0) {
+        queue.push({ phone: u.phone, name: u.tenant_name, due: due1, lang: u.language, unit: u });
+      }
+      // مستأجر 2
+      const due2 = Math.max(0, parseFloat(u.rent2||0) - (paid2Map[u.id]||0));
+      if (u.phone2 && due2 > 0) {
+        queue.push({ phone: u.phone2, name: u.tenant_name2, due: due2, lang: u.language, unit: u });
+      }
+    } else {
+      const due = Math.max(0, parseFloat(u.monthly_rent||0) - (paid1Map[u.id]||0));
+      if (u.phone && due > 0) {
+        queue.push({ phone: u.phone, name: u.tenant_name, due, lang: u.language, unit: u });
+      }
+    }
+  });
+
   let i = 0;
   function sendNext() {
-    if (i >= units.length) { toast(t('bulk_sent'), 'success'); return; }
-    const u   = units[i++];
-    const due = Math.max(0, parseFloat(u.monthly_rent||0) - (paidMap[u.id]||0));
-    if (u.phone && due > 0) {
-      const msg = Helpers.rentReminderMsg(u, month, due, (u.language||'AR'));
-      Helpers.openWhatsApp(u.phone, msg);
-    }
-    // تأخير بسيط بين كل رسالة
+    if (i >= queue.length) { toast(t('bulk_sent'), 'success'); return; }
+    const item = queue[i++];
+    const msg  = Helpers.rentReminderMsg(
+      { ...item.unit, tenant_name: item.name },
+      month, item.due, item.lang || 'AR'
+    );
+    Helpers.openWhatsApp(item.phone, msg);
     setTimeout(sendNext, 600);
   }
   sendNext();

@@ -43,11 +43,19 @@ async function autoFillRent() {
     const amountEl = document.getElementById('pay-amount');
     const monthEl  = document.getElementById('pay-month');
     const unitIdEl = document.getElementById('pay-unit-id');
+    const badgeEl  = document.getElementById('r-tenant-badge');
 
     if (nameEl)   nameEl.value   = data.tenant_name || '';
     if (amountEl) amountEl.value = data.monthly_rent || '';
     if (monthEl && !monthEl.value) monthEl.value = Helpers.currentMonthFirst();
     if (unitIdEl) unitIdEl.value = data.id || '';
+
+    // badge: اسم المستأجر + لو في مستأجر ثاني
+    if (badgeEl) {
+      const names = [data.tenant_name, data.tenant_name2].filter(Boolean);
+      badgeEl.textContent = names.join(' & ') || '';
+      badgeEl.style.display = names.length ? 'inline' : 'none';
+    }
 
   } catch (err) {
     console.error('autoFillRent error:', err);

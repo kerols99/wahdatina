@@ -94,10 +94,10 @@ async function _renderMonthly() {
     // Q9: جيب كل البيانات دفعة واحدة
     const [unitsRes, paymentsRes, allDepsRes, historyRes] = await Promise.all([
       sb.from('units')
-        .select('id, apartment, room, tenant_name, monthly_rent, is_vacant, unit_status, start_date')
+        .select('id, apartment, room, tenant_name, tenant_name2, monthly_rent, rent1, rent2, is_vacant, unit_status, start_date')
         .order('apartment').order('room'),
       sb.from('rent_payments')
-        .select('unit_id, amount')
+        .select('unit_id, amount, tenant_num')
         .eq('payment_month', monStart),
       // كل التأمينات بدون فلتر — هنفلتر يدوياً حسب المنطق
       sb.from('deposits')
@@ -118,10 +118,17 @@ async function _renderMonthly() {
     const history  = historyRes.data  || [];
 
     // ── Maps ──────────────────────────────────────────────
-    // paidMap: unit_id → إجمالي مدفوع هذا الشهر
-    const paidMap = {};
+    // paidMap: unit_id → إجمالي مدفوع + منفصل per tenant
+    const paidMap  = {};
+    const paid1Map = {};
+    const paid2Map = {};
     payments.forEach(p => {
-      paidMap[p.unit_id] = (paidMap[p.unit_id] || 0) + parseFloat(p.amount || 0);
+      paidMap[p.unit_id]  = (paidMap[p.unit_id]  || 0) + parseFloat(p.amount || 0);
+      if (p.tenant_num === 2) {
+        paid2Map[p.unit_id] = (paid2Map[p.unit_id] || 0) + parseFloat(p.amount || 0);
+      } else {
+        paid1Map[p.unit_id] = (paid1Map[p.unit_id] || 0) + parseFloat(p.amount || 0);
+      }
     });
 
     // historyMap: unit_id → أقدم سجل ينتمي لهذا الشهر
@@ -183,13 +190,20 @@ async function _renderMonthly() {
           ? 0
           : parseFloat(u.monthly_rent || 0);
 
+      const isDual = !hasHistory && u.tenant_name2 && u.rent2 > 0;
       reportUnits.push({
         id:          u.id,
         apartment:   u.apartment,
         room:        u.room,
         displayName: displayName || '—',
+        tenant_name2: u.tenant_name2 || null,
         targetRent,
-        paid:        paidMap[u.id] || 0,
+        rent1:       isDual ? parseFloat(u.rent1||0) : 0,
+        rent2:       isDual ? parseFloat(u.rent2||0) : 0,
+        paid:        paidMap[u.id]  || 0,
+        paid1:       paid1Map[u.id] || 0,
+        paid2:       paid2Map[u.id] || 0,
+        isDual,
         depReceived: depReceivedMap[u.id] || 0,
         depRefund:   depRefundMap[u.id] || 0,
         fromHistory: hasHistory,
@@ -235,8 +249,14 @@ ${aptGroups.map(g => `
   ${g.units.map(u => `
   <div class="rpt-unit-row">
     <span class="muted">${t('room_label')} ${Helpers.escapeHtml(u.room)}</span>
-    <span>${Helpers.escapeHtml(u.displayName)}${u.fromHistory ? ' <span class="muted small">📁</span>' : ''}</span>
-    <span class="${u.paid >= u.targetRent && u.targetRent > 0 ? 'green' : u.paid > 0 ? 'amber' : 'red'}">${Helpers.formatAED(u.paid)}</span>
+    <div>
+      <span>${Helpers.escapeHtml(u.displayName)}${u.fromHistory ? ' <span class="muted small">📁</span>' : ''}</span>
+      ${u.isDual ? `<br><span class="muted small">& ${Helpers.escapeHtml(u.tenant_name2)}</span>` : ''}
+    </div>
+    <div>
+      <span class="${u.paid >= u.targetRent && u.targetRent > 0 ? 'green' : u.paid > 0 ? 'amber' : 'red'}">${Helpers.formatAED(u.paid)}</span>
+      ${u.isDual ? `<br><span class="muted small">${Helpers.formatAED(u.paid1)} + ${Helpers.formatAED(u.paid2)}</span>` : ''}
+    </div>
     <span class="muted">${Helpers.formatAED(u.targetRent)}</span>
     ${u.depReceived > 0 ? `<span class="blue small">+${Helpers.formatAED(u.depReceived)} ${t('deposit_held')}</span>` : ''}
     ${u.depRefund   > 0 ? `<span class="red small">-${Helpers.formatAED(u.depRefund)} ${t('deposit_refunded')}</span>` : ''}
@@ -703,11 +723,7 @@ async function exportDeparturePDF() {
 <div class="total">${t('total')}: ${moves?.length || 0} ${t('departures_count')}</div>
 </body></html>`;
 
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 500);
+    await exportPDF(t('departures_report'), html);
   } catch(err) {
     toast(`❌ ${err.message}`, 'error');
   }
