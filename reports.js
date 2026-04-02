@@ -4,6 +4,33 @@
 // ══════════════════════════════════════════
 'use strict';
 
+// ══════════════════════════════════════════
+// exportPDF — دالة مركزية لكل تقارير الـ PDF
+// ══════════════════════════════════════════
+async function exportPDF(title, bodyHTML) {
+  const style = `
+    <style>
+      @page { size: A4; margin: 10mm; }
+      body { font-family: Cairo, Arial, sans-serif; direction: rtl; color: #111; font-size: 11px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #1a3a6a; color: #fff; padding: 6px 8px; text-align: right; font-size: 11px; }
+      td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11px; }
+      .header { border-bottom: 3px solid #1a3a6a; padding-bottom: 10px; margin-bottom: 16px; }
+      .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 16px; }
+      .kpi-box { background: #f5f7ff; border-radius: 8px; padding: 10px; text-align: center; }
+      .kpi-val { font-size: 16px; font-weight: 800; color: #1a3a6a; }
+      @media print { body { margin: 0; } }
+    </style>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>${title}</title>${style}</head><body>${bodyHTML}</body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) { toast(t('allow_popups') || 'يرجى السماح بالنوافذ المنبثقة', 'error'); return; }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 300);
+}
+
+
 let _reportsTab = 'monthly';
 
 function loadReports() {
@@ -39,16 +66,19 @@ function switchReportsTab(tab) {
 // ══════════════════════════════════════════
 async function loadMonthly() {
   const c = document.getElementById('reports-tab-content');
-  const monthFirst = Helpers.currentMonthFirst();
-
-  c.innerHTML = `
+  if (!c) return;
+  try {
+    const monthFirst = Helpers.currentMonthFirst();
+    c.innerHTML = `
 <div class="report-controls">
   <input type="month" id="rpt-month" value="${monthFirst.slice(0,7)}" onchange="loadMonthly()">
   <button class="btn btn-secondary" onclick="exportMonthlyPDF()">${t('btn_export_pdf')}</button>
 </div>
 <div id="rpt-monthly-body"><div class="loading">${t('loading')}</div></div>`;
-
-  await _renderMonthly();
+    await _renderMonthly();
+  } catch(err) {
+    c.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+  }
 }
 
 async function _renderMonthly() {
@@ -56,59 +86,141 @@ async function _renderMonthly() {
   const body    = document.getElementById('rpt-monthly-body');
   if (!monthEl || !body) return;
 
-  const selectedMonth = monthEl.value + '-01';
+  const selectedMonthYM = monthEl.value;  // 'YYYY-MM'
+  const monStart = selectedMonthYM + '-01';
+  const monEnd   = Helpers.monthEnd(monStart);
 
   try {
     // Q9: جيب كل البيانات دفعة واحدة
-    const [unitsRes, paymentsRes, depositsRes, refundsRes] = await Promise.all([
-      sb.from('units').select('id, apartment, room, tenant_name, monthly_rent, is_vacant, unit_status').order('apartment').order('room'),
-      sb.from('rent_payments').select('unit_id, apartment, room, tenant_name, amount, tenant_num, payment_method').eq('payment_month', selectedMonth),
-      sb.from('deposits').select('unit_id, amount, status, deposit_received_date').like('deposit_received_date', selectedMonth.slice(0,7) + '%'),
-      sb.from('deposits').select('unit_id, refund_amount').gt('refund_amount', 0).like('refund_date', selectedMonth.slice(0,7) + '%'),
+    const [unitsRes, paymentsRes, allDepsRes, historyRes] = await Promise.all([
+      sb.from('units')
+        .select('id, apartment, room, tenant_name, monthly_rent, is_vacant, unit_status, start_date')
+        .order('apartment').order('room'),
+      sb.from('rent_payments')
+        .select('unit_id, amount')
+        .eq('payment_month', monStart),
+      // كل التأمينات بدون فلتر — هنفلتر يدوياً حسب المنطق
+      sb.from('deposits')
+        .select('unit_id, amount, refund_amount, deposit_received_date, refund_date'),
+      // unit_history للشهر المطلوب — مهم للتقارير التاريخية
+      sb.from('unit_history')
+        .select('unit_id, tenant_name, monthly_rent, start_date, end_date')
+        .lte('start_date', monEnd)
+        .or(`end_date.gte.${monStart},end_date.is.null`),
     ]);
 
-    if (unitsRes.error) throw unitsRes.error;
+    if (unitsRes.error)   throw unitsRes.error;
+    if (paymentsRes.error) throw paymentsRes.error;
 
-    const units      = unitsRes.data    || [];
-    const payments   = paymentsRes.data || [];
-    const newDeps    = depositsRes.data || [];
-    const refunds    = refundsRes.data  || [];
+    const units   = unitsRes.data    || [];
+    const payments = paymentsRes.data || [];
+    const allDeps  = allDepsRes.data  || [];
+    const history  = historyRes.data  || [];
 
-    // Map المدفوعات حسب unit_id
+    // ── Maps ──────────────────────────────────────────────
+    // paidMap: unit_id → إجمالي مدفوع هذا الشهر
     const paidMap = {};
-    payments.forEach(p => { paidMap[p.unit_id] = (paidMap[p.unit_id]||0) + parseFloat(p.amount||0); });
+    payments.forEach(p => {
+      paidMap[p.unit_id] = (paidMap[p.unit_id] || 0) + parseFloat(p.amount || 0);
+    });
 
-    // إجماليات
-    const totalRent     = payments.reduce((s,p) => s+parseFloat(p.amount||0), 0);
-    const totalDeps     = newDeps.reduce((s,d) => s+parseFloat(d.amount||0), 0);
-    const totalRefunds  = refunds.reduce((s,r) => s+parseFloat(r.refund_amount||0), 0);
-    const totalTarget   = units.filter(u => !u.is_vacant && u.unit_status==='occupied').reduce((s,u) => s+parseFloat(u.monthly_rent||0), 0);
-    const totalNet      = totalRent + totalDeps - totalRefunds;
+    // historyMap: unit_id → أقدم سجل ينتمي لهذا الشهر
+    // (للمستأجر اللي كان موجود في هذا الشهر)
+    const historyMap = {};
+    history.forEach(h => {
+      if (!historyMap[h.unit_id]) historyMap[h.unit_id] = h;
+    });
+
+    // deposit logic حسب الـ prompt:
+    // - دخل: التأمين المستلم في هذا الشهر (deposit_received_date)
+    // - خصم: المرتجع في هذا الشهر (refund_date)
+    const depReceivedMap = {};  // unit_id → مبلغ التأمين المستلم هذا الشهر
+    const depRefundMap   = {};  // unit_id → مبلغ المرتجع هذا الشهر
+    allDeps.forEach(d => {
+      const recYM = String(d.deposit_received_date || '').slice(0, 7);
+      const refYM = String(d.refund_date || '').slice(0, 7);
+      if (recYM === selectedMonthYM) {
+        depReceivedMap[d.unit_id] = (depReceivedMap[d.unit_id] || 0) + parseFloat(d.amount || 0);
+      }
+      if (refYM === selectedMonthYM && parseFloat(d.refund_amount || 0) > 0) {
+        depRefundMap[d.unit_id] = (depRefundMap[d.unit_id] || 0) + parseFloat(d.refund_amount || 0);
+      }
+    });
+
+    // ── إجماليات ──────────────────────────────────────────
+    const totalRent    = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const totalDeps    = Object.values(depReceivedMap).reduce((s, v) => s + v, 0);
+    const totalRefunds = Object.values(depRefundMap).reduce((s, v) => s + v, 0);
+    const totalNet     = totalRent + totalDeps - totalRefunds;
+
+    // ── بناء قائمة الوحدات للتقرير ─────────────────────────
+    // منطق المستأجر الصح للشهر:
+    const reportUnits = [];
+
+    units.forEach(u => {
+      const h                 = historyMap[u.id];
+      const hasPay            = (paidMap[u.id] || 0) > 0;
+      const hasDepActivity    = (depReceivedMap[u.id] || 0) > 0 || (depRefundMap[u.id] || 0) > 0;
+      const hasHistory        = !!h?.tenant_name;
+
+      // المستأجر الحالي دخل بعد هذا الشهر؟
+      const tenantStartedAfter = u.start_date &&
+        u.start_date.slice(0, 7) > selectedMonthYM;
+
+      // تجاهل الوحدة لو:
+      // فاضية حالياً + مفيش مدفوعات + مفيش تأمين + مفيش تاريخ
+      if (u.is_vacant && !hasPay && !hasDepActivity && !hasHistory) return;
+      // المستأجر الحالي دخل بعد الشهر + مفيش تاريخ + مفيش مدفوعات
+      if (tenantStartedAfter && !hasHistory && !hasPay && !hasDepActivity) return;
+
+      // اختار المستأجر الصح للشهر ده
+      const displayName = hasHistory ? h.tenant_name : u.tenant_name;
+
+      // الإيجار المستهدف
+      const targetRent = hasHistory
+        ? parseFloat(h.monthly_rent || 0)
+        : (tenantStartedAfter || u.is_vacant)
+          ? 0
+          : parseFloat(u.monthly_rent || 0);
+
+      reportUnits.push({
+        id:          u.id,
+        apartment:   u.apartment,
+        room:        u.room,
+        displayName: displayName || '—',
+        targetRent,
+        paid:        paidMap[u.id] || 0,
+        depReceived: depReceivedMap[u.id] || 0,
+        depRefund:   depRefundMap[u.id] || 0,
+        fromHistory: hasHistory,
+      });
+    });
 
     // تجميع حسب الشقة
     const aptMap = {};
-    units.filter(u => !u.is_vacant).forEach(u => {
+    reportUnits.forEach(u => {
       const key = u.apartment;
       if (!aptMap[key]) aptMap[key] = { apartment: key, units: [], totalRequired: 0, totalPaid: 0 };
-      const paid = paidMap[u.id] || 0;
-      aptMap[key].units.push({ ...u, paid });
-      aptMap[key].totalRequired += parseFloat(u.monthly_rent||0);
-      aptMap[key].totalPaid     += paid;
+      aptMap[key].units.push(u);
+      aptMap[key].totalRequired += u.targetRent;
+      aptMap[key].totalPaid     += u.paid;
     });
 
-    const aptGroups = Object.values(aptMap).sort((a,b) => a.apartment.localeCompare(b.apartment, undefined, {numeric:true}));
+    const totalTarget = reportUnits.reduce((s, u) => s + u.targetRent, 0);
+    const aptGroups   = Object.values(aptMap)
+      .sort((a, b) => a.apartment.localeCompare(b.apartment, undefined, { numeric: true }));
 
     body.innerHTML = `
 <div id="rpt-monthly-content">
 <div class="rpt-header">
-  <strong>${t('reports_monthly')} — ${Helpers.fmtMonth(selectedMonth)}</strong>
+  <strong>${t('reports_monthly')} — ${Helpers.fmtMonth(monStart)}</strong>
 </div>
 
 <div class="rpt-kpi-bar">
   <div class="rpt-kpi"><span class="rpt-kpi-val green">${Helpers.formatAED(totalRent)}</span><span class="rpt-kpi-lbl">${t('kpi_collected')}</span></div>
   <div class="rpt-kpi"><span class="rpt-kpi-val blue">${Helpers.formatAED(totalDeps)}</span><span class="rpt-kpi-lbl">${t('deposits_received')}</span></div>
   <div class="rpt-kpi"><span class="rpt-kpi-val red">${Helpers.formatAED(totalRefunds)}</span><span class="rpt-kpi-lbl">${t('refunds_lbl')}</span></div>
-  <div class="rpt-kpi"><span class="rpt-kpi-val amber">${Helpers.formatAED(totalTarget - totalRent > 0 ? totalTarget - totalRent : 0)}</span><span class="rpt-kpi-lbl">${t('kpi_remaining')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val amber">${Helpers.formatAED(Math.max(0, totalTarget - totalRent))}</span><span class="rpt-kpi-lbl">${t('kpi_remaining')}</span></div>
   <div class="rpt-kpi"><span class="rpt-kpi-val">${Helpers.formatAED(totalNet)}</span><span class="rpt-kpi-lbl">${t('net_profit')}</span></div>
 </div>
 
@@ -116,21 +228,28 @@ ${aptGroups.map(g => `
 <div class="rpt-apt-group">
   <div class="rpt-apt-header">
     <span>${t('apt_label')} ${Helpers.escapeHtml(g.apartment)}</span>
-    <span class="${g.totalPaid >= g.totalRequired ? 'green' : g.totalPaid > 0 ? 'amber' : 'red'}">${Helpers.formatAED(g.totalPaid)} / ${Helpers.formatAED(g.totalRequired)}</span>
+    <span class="${g.totalPaid >= g.totalRequired && g.totalRequired > 0 ? 'green' : g.totalPaid > 0 ? 'amber' : 'red'}">
+      ${Helpers.formatAED(g.totalPaid)} / ${Helpers.formatAED(g.totalRequired)}
+    </span>
   </div>
   ${g.units.map(u => `
   <div class="rpt-unit-row">
     <span class="muted">${t('room_label')} ${Helpers.escapeHtml(u.room)}</span>
-    <span>${Helpers.escapeHtml(u.tenant_name||'—')}</span>
-    <span class="${u.paid >= parseFloat(u.monthly_rent||0) ? 'green' : u.paid > 0 ? 'amber' : 'red'}">${Helpers.formatAED(u.paid)}</span>
-    <span class="muted">${Helpers.formatAED(u.monthly_rent)}</span>
+    <span>${Helpers.escapeHtml(u.displayName)}${u.fromHistory ? ' <span class="muted small">📁</span>' : ''}</span>
+    <span class="${u.paid >= u.targetRent && u.targetRent > 0 ? 'green' : u.paid > 0 ? 'amber' : 'red'}">${Helpers.formatAED(u.paid)}</span>
+    <span class="muted">${Helpers.formatAED(u.targetRent)}</span>
+    ${u.depReceived > 0 ? `<span class="blue small">+${Helpers.formatAED(u.depReceived)} ${t('deposit_held')}</span>` : ''}
+    ${u.depRefund   > 0 ? `<span class="red small">-${Helpers.formatAED(u.depRefund)} ${t('deposit_refunded')}</span>` : ''}
   </div>`).join('')}
 </div>`).join('')}
 
-${aptGroups.length === 0 ? `<div class="empty-msg">${t('no_payments_this_month')}</div>` : ''}
+${aptGroups.length === 0
+  ? `<div class="empty-msg">${t('no_payments_this_month')}</div>`
+  : ''}
 </div>`;
 
   } catch(err) {
+    console.error('_renderMonthly:', err);
     body.innerHTML = `<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`;
   }
 }
@@ -140,15 +259,18 @@ ${aptGroups.length === 0 ? `<div class="empty-msg">${t('no_payments_this_month')
 // ══════════════════════════════════════════
 async function loadExpRpt() {
   const c = document.getElementById('reports-tab-content');
-  const monthFirst = Helpers.currentMonthFirst();
-
-  c.innerHTML = `
+  if (!c) return;
+  try {
+    const monthFirst = Helpers.currentMonthFirst();
+    c.innerHTML = `
 <div class="report-controls">
   <input type="month" id="exp-rpt-month" value="${monthFirst.slice(0,7)}" onchange="loadExpRpt()">
 </div>
 <div id="rpt-exp-body"><div class="loading">${t('loading')}</div></div>`;
-
-  await _renderExpRpt();
+    await _renderExpRpt();
+  } catch(err) {
+    c.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+  }
 }
 
 async function _renderExpRpt() {
@@ -206,63 +328,100 @@ ${(expenses||[]).length === 0
 
 async function deleteExpense(id) {
   if (!confirm(t('btn_confirm_delete'))) return;
-  const { error } = await sb.from('expenses').delete().eq('id', id);
-  if (error) { toast(`❌ ${error.message}`, 'error'); return; }
-  toast(t('toast_deleted'), 'info');
-  _renderExpRpt();
+  try {
+    const { error } = await sb.from('expenses').delete().eq('id', id);
+    if (error) throw error;
+    toast(t('toast_deleted'), 'info');
+    _renderExpRpt();
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  }
 }
 
 // ══════════════════════════════════════════
-// تقرير التأمينات
+// تقرير التأمينات — مع dedup + groupByApt
 // ══════════════════════════════════════════
 async function loadDepRpt() {
   const c = document.getElementById('reports-tab-content');
-  c.innerHTML = `<div class="loading">${t('loading')}</div>`;
-
+  if (!c) return;
   try {
-    const { data: deposits, error } = await sb.from('deposits')
-      .select('*').order('created_at', {ascending: false});
+    c.innerHTML = `<div class="loading">${t('loading')}</div>`;
+
+    const { data: allDeps, error } = await sb.from('deposits')
+      .select('*').gt('amount', 0).order('created_at', { ascending: false });
     if (error) throw error;
 
-    const deps = deposits || [];
-    const held      = deps.filter(d => d.status==='held' && !(d.refund_amount > 0));
-    const partial   = deps.filter(d => d.status==='held' && d.refund_amount > 0);
-    const refunded  = deps.filter(d => d.status==='refunded');
-    const forfeited = deps.filter(d => d.status==='forfeited');
+    // dedup: نفس unit_id + tenant_name + amount + status = سجل واحد
+    const seen = new Set();
+    const deps = (allDeps || []).filter(d => {
+      const key = `${d.unit_id}|${d.tenant_name}|${d.amount}|${d.status}`;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
 
-    const totalHeld      = held.reduce((s,d) => s+parseFloat(d.amount||0), 0);
-    const totalPartial   = partial.reduce((s,d) => s+parseFloat(d.amount||0), 0);
-    const totalRefunded  = [...refunded,...partial].reduce((s,d) => s+parseFloat(d.refund_amount||0), 0);
-    const totalForfeited = forfeited.reduce((s,d) => s+parseFloat(d.amount||0), 0);
+    // Q12: refund_amount > 0 مش status='refunded'
+    const held      = deps.filter(d => d.status === 'held' && !(d.refund_amount > 0));
+    const partial   = deps.filter(d => d.status === 'held' && d.refund_amount > 0);
+    const refunded  = deps.filter(d => d.status === 'refunded');
+    const forfeited = deps.filter(d => d.status === 'forfeited');
 
-    const renderGroup = (list, title, badgeClass) => {
-      if (list.length === 0) return '';
+    const totalHeld      = held.reduce((s,d) => s + parseFloat(d.amount||0), 0);
+    const totalPartial   = partial.reduce((s,d) => s + parseFloat(d.amount||0) - parseFloat(d.refund_amount||0), 0);
+    const totalRefunded  = [...refunded, ...partial].reduce((s,d) => s + parseFloat(d.refund_amount||0), 0);
+    const totalForfeited = forfeited.reduce((s,d) => s + parseFloat(d.amount||0), 0);
+    const totalActive    = totalHeld + totalPartial; // ما زال محتجزاً فعلاً
+
+    // تجميع حسب شقة
+    function groupByApt(items) {
+      const groups = {};
+      items.forEach(d => {
+        const apt = String(d.apartment || '—');
+        if (!groups[apt]) groups[apt] = { apt, items: [], total: 0 };
+        groups[apt].items.push(d);
+        groups[apt].total += parseFloat(d.amount || 0);
+      });
+      return Object.values(groups).sort((a,b) => a.apt.localeCompare(b.apt, undefined, { numeric: true }));
+    }
+
+    function renderGroup(list, title, badgeClass) {
+      if (!list.length) return '';
+      const groups = groupByApt(list);
       return `
 <div class="section-title">${title} (${list.length})</div>
-${list.map(d => `
-<div class="rpt-row">
-  <span>${t('apt_label')} ${Helpers.escapeHtml(d.apartment)} — ${t('room_label')} ${Helpers.escapeHtml(d.room)}</span>
-  <span>${Helpers.escapeHtml(d.tenant_name||'—')}</span>
-  <span class="green">${Helpers.formatAED(d.amount)}</span>
-  ${d.refund_amount > 0 ? `<span class="amber">↩ ${Helpers.formatAED(d.refund_amount)}</span>` : ''}
-  <span class="status-badge ${badgeClass}">${d.status==='held'?t('deposit_held'):d.status==='refunded'?t('deposit_refunded'):t('deposit_forfeited')}</span>
+${groups.map(g => `
+<div class="rpt-apt-group">
+  <div class="rpt-apt-header">
+    <span>${t('apt_label')} ${Helpers.escapeHtml(g.apt)}</span>
+    <span class="green">${Helpers.formatAED(g.total)}</span>
+  </div>
+  ${g.items.map(d => `
+  <div class="rpt-unit-row" style="grid-template-columns:80px 1fr 1fr auto">
+    <span class="muted">${t('room_label')} ${Helpers.escapeHtml(d.room)}</span>
+    <span>${Helpers.escapeHtml(d.tenant_name||'—')}</span>
+    <div>
+      <span class="green">${Helpers.formatAED(d.amount)}</span>
+      ${d.refund_amount > 0 ? `<br><span class="amber small">↩ ${Helpers.formatAED(d.refund_amount)}</span><br><span class="muted small">${t('balance')}: ${Helpers.formatAED(parseFloat(d.amount)-parseFloat(d.refund_amount))}</span>` : ''}
+    </div>
+    <span class="status-badge ${badgeClass}">${d.status==='held'?t('deposit_held'):d.status==='refunded'?t('deposit_refunded'):t('deposit_forfeited')}</span>
+  </div>`).join('')}
 </div>`).join('')}`;
-    };
+    }
 
     c.innerHTML = `
 <div class="rpt-header"><strong>${t('reports_deposits')}</strong></div>
 
 <div class="rpt-kpi-bar">
+  <div class="rpt-kpi"><span class="rpt-kpi-val green">${Helpers.formatAED(totalActive)}</span><span class="rpt-kpi-lbl">🔒 ${t('total_held_active')}</span></div>
   <div class="rpt-kpi"><span class="rpt-kpi-val green">${Helpers.formatAED(totalHeld)}</span><span class="rpt-kpi-lbl">${t('deposit_held')}</span></div>
   <div class="rpt-kpi"><span class="rpt-kpi-val amber">${Helpers.formatAED(totalPartial)}</span><span class="rpt-kpi-lbl">${t('deposit_partial')}</span></div>
-  <div class="rpt-kpi"><span class="rpt-kpi-val blue">${Helpers.formatAED(totalRefunded)}</span><span class="rpt-kpi-lbl">${t('deposit_refunded')}</span></div>
-  <div class="rpt-kpi"><span class="rpt-kpi-val red">${Helpers.formatAED(totalForfeited)}</span><span class="rpt-kpi-lbl">${t('deposit_forfeited')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val blue">${Helpers.formatAED(totalRefunded)}</span><span class="rpt-kpi-lbl">↩️ ${t('deposit_refunded')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val red">${Helpers.formatAED(totalForfeited)}</span><span class="rpt-kpi-lbl">🚫 ${t('deposit_forfeited')}</span></div>
 </div>
 
-${renderGroup(held,     t('deposit_held'),     'status-paid')}
-${renderGroup(partial,  t('deposit_partial'),  'status-partial')}
-${renderGroup(refunded, t('deposit_refunded'), 'status-vacant')}
-${renderGroup(forfeited,t('deposit_forfeited'),'status-unpaid')}
+${renderGroup(held,      t('deposit_held'),     'status-paid')}
+${renderGroup(partial,   t('deposit_partial'),  'status-partial')}
+${renderGroup(refunded,  t('deposit_refunded'), 'status-vacant')}
+${renderGroup(forfeited, t('deposit_forfeited'),'status-unpaid')}
 ${deps.length === 0 ? `<div class="empty-msg">${t('no_deposits')}</div>` : ''}`;
 
   } catch(err) {
@@ -275,17 +434,20 @@ ${deps.length === 0 ? `<div class="empty-msg">${t('no_deposits')}</div>` : ''}`;
 // ══════════════════════════════════════════
 async function loadAnnual() {
   const c = document.getElementById('reports-tab-content');
-  const year = new Date().getFullYear();
-
-  c.innerHTML = `
+  if (!c) return;
+  try {
+    const year = new Date().getFullYear();
+    c.innerHTML = `
 <div class="report-controls">
   <select id="ann-year" onchange="loadAnnual()">
     ${[year, year-1, year-2].map(y => `<option value="${y}" ${y===year?'selected':''}>${y}</option>`).join('')}
   </select>
 </div>
 <div id="rpt-annual-body"><div class="loading">${t('loading')}</div></div>`;
-
-  await _renderAnnual();
+    await _renderAnnual();
+  } catch(err) {
+    c.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+  }
 }
 
 async function _renderAnnual() {
@@ -374,35 +536,71 @@ ${months.map((m, i) => {
 async function exportMonthlyPDF() {
   const monthEl = document.getElementById('rpt-month');
   if (!monthEl) return;
-  const month = monthEl.value + '-01';
+  const selectedMonthYM = monthEl.value;
+  const monStart = selectedMonthYM + '-01';
+  const monEnd   = Helpers.monthEnd(monStart);
 
   try {
-    const [unitsRes, paymentsRes] = await Promise.all([
-      sb.from('units').select('*').eq('is_vacant', false).order('apartment').order('room'),
-      sb.from('rent_payments').select('*').eq('payment_month', month),
+    // Q9: نفس منطق _renderMonthly مع unit_history
+    const [unitsRes, paymentsRes, allDepsRes, historyRes] = await Promise.all([
+      sb.from('units').select('id,apartment,room,tenant_name,monthly_rent,is_vacant,unit_status,start_date').order('apartment').order('room'),
+      sb.from('rent_payments').select('unit_id,amount').eq('payment_month', monStart),
+      sb.from('deposits').select('unit_id,amount,refund_amount,deposit_received_date,refund_date'),
+      sb.from('unit_history').select('unit_id,tenant_name,monthly_rent,start_date,end_date')
+        .lte('start_date', monEnd).or(`end_date.gte.${monStart},end_date.is.null`),
     ]);
 
-    const units    = unitsRes.data    || [];
+    if (unitsRes.error) throw unitsRes.error;
+
+    const units   = unitsRes.data || [];
     const payments = paymentsRes.data || [];
+    const allDeps  = allDepsRes.data || [];
+    const history  = historyRes.data || [];
 
     const paidMap = {};
     payments.forEach(p => { paidMap[p.unit_id] = (paidMap[p.unit_id]||0) + parseFloat(p.amount||0); });
 
-    const totalCollected = payments.reduce((s,p) => s+parseFloat(p.amount||0), 0);
-    const totalTarget    = units.reduce((s,u) => s+parseFloat(u.monthly_rent||0), 0);
+    const historyMap = {};
+    history.forEach(h => { if (!historyMap[h.unit_id]) historyMap[h.unit_id] = h; });
 
-    const rows = units.map(u => {
+    const depReceivedMap = {};
+    allDeps.forEach(d => {
+      const recYM = String(d.deposit_received_date||'').slice(0,7);
+      if (recYM === selectedMonthYM)
+        depReceivedMap[d.unit_id] = (depReceivedMap[d.unit_id]||0) + parseFloat(d.amount||0);
+    });
+
+    const totalCollected = payments.reduce((s,p) => s+parseFloat(p.amount||0), 0);
+    let   totalTarget = 0;
+
+    const rows = [];
+    units.forEach(u => {
+      const h                  = historyMap[u.id];
+      const hasPay             = (paidMap[u.id]||0) > 0;
+      const hasDepActivity     = (depReceivedMap[u.id]||0) > 0;
+      const hasHistory         = !!h?.tenant_name;
+      const tenantStartedAfter = u.start_date && u.start_date.slice(0,7) > selectedMonthYM;
+
+      if (u.is_vacant && !hasPay && !hasDepActivity && !hasHistory) return;
+      if (tenantStartedAfter && !hasHistory && !hasPay && !hasDepActivity) return;
+
+      const displayName = hasHistory ? h.tenant_name : u.tenant_name;
+      const targetRent  = hasHistory
+        ? parseFloat(h.monthly_rent||0)
+        : (tenantStartedAfter || u.is_vacant) ? 0 : parseFloat(u.monthly_rent||0);
+
+      totalTarget += targetRent;
       const paid = paidMap[u.id] || 0;
-      const due  = Math.max(0, parseFloat(u.monthly_rent||0) - paid);
-      return `<tr>
+      const due  = Math.max(0, targetRent - paid);
+      rows.push(`<tr>
         <td>${Helpers.escapeHtml(u.apartment)}</td>
         <td>${Helpers.escapeHtml(u.room)}</td>
-        <td>${Helpers.escapeHtml(u.tenant_name||'—')}</td>
+        <td>${Helpers.escapeHtml(displayName||'—')}${hasHistory?'  📁':''}</td>
         <td style="color:#22c55e;font-weight:700">${Helpers.formatAED(paid)}</td>
-        <td>${Helpers.formatAED(u.monthly_rent)}</td>
+        <td>${Helpers.formatAED(targetRent)}</td>
         <td style="color:${due>0?'#ef4444':'#22c55e'}">${due>0?Helpers.formatAED(due):'✅'}</td>
-      </tr>`;
-    }).join('');
+      </tr>`);
+    });
 
     const html = `<!DOCTYPE html><html dir="${LANG==='ar'?'rtl':'ltr'}">
 <head><meta charset="UTF-8">
@@ -418,13 +616,13 @@ async function exportMonthlyPDF() {
   @media print{body{margin:0}}
 </style></head><body>
 <h2>🏢 واحدتنا — Wahdatina</h2>
-<div class="sub">${Helpers.fmtMonth(month)} | ${t('reports_monthly')}</div>
+<div class="sub">${Helpers.fmtMonth(monStart)} | ${t('reports_monthly')}</div>
 <table>
   <thead><tr>
     <th>${t('apt_label')}</th><th>${t('room_label')}</th><th>${t('drawer_tenant')}</th>
     <th>${t('kpi_collected')}</th><th>${t('uf_rent')}</th><th>${t('kpi_remaining')}</th>
   </tr></thead>
-  <tbody>${rows}</tbody>
+  <tbody>${rows.join('')}</tbody>
 </table>
 <div class="total">
   ${t('kpi_collected')}: ${Helpers.formatAED(totalCollected)} &nbsp;|&nbsp;
@@ -433,12 +631,85 @@ async function exportMonthlyPDF() {
 </div>
 </body></html>`;
 
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 600);
+    await exportPDF(t('reports_monthly') + ' — ' + Helpers.fmtMonth(monStart), html);
   } catch(err) {
     toast(`❌ ${err.message}`, 'error');
   }
 }
+
+// ══════════════════════════════════════════
+// exportDeparturePDF — تقرير المغادرين PDF
+// ══════════════════════════════════════════
+async function exportDeparturePDF() {
+  try {
+    const { data: moves, error } = await sb
+      .from('moves')
+      .select('*')
+      .eq('type', 'depart')
+      .eq('status', 'pending')
+      .order('move_date');
+    if (error) throw error;
+
+    const { data: units } = await sb
+      .from('units')
+      .select('id, apartment, room, tenant_name, monthly_rent, deposit, phone');
+
+    const unitMap = {};
+    (units || []).forEach(u => { unitMap[u.id] = u; });
+
+    const rows = (moves || []).map(m => {
+      const u = unitMap[m.unit_id] || {};
+      return `<tr>
+        <td>${Helpers.escapeHtml(m.apartment)}</td>
+        <td>${Helpers.escapeHtml(m.room)}</td>
+        <td>${Helpers.escapeHtml(m.tenant_name || u.tenant_name || '—')}</td>
+        <td>${Helpers.escapeHtml(m.phone || u.phone || '—')}</td>
+        <td>${Helpers.fmtDate(m.move_date)}</td>
+        <td>${Helpers.formatAED(u.monthly_rent || 0)}</td>
+        <td>${Helpers.formatAED(u.deposit || 0)}</td>
+        <td>${Helpers.escapeHtml(m.notes || '')}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html dir="${LANG==='ar'?'rtl':'ltr'}">
+<head><meta charset="UTF-8">
+<style>
+  body { font-family: Cairo, Arial, sans-serif; font-size: 11px; margin: 20px; }
+  h2   { text-align: center; color: #1e293b; margin-bottom: 4px; }
+  .sub { text-align: center; color: #64748b; margin-bottom: 16px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #6366f1; color: white; padding: 7px 6px; text-align: center; font-size: 11px; }
+  td { padding: 6px; border-bottom: 1px solid #e2e8f0; text-align: center; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .total { margin-top: 12px; font-weight: 700; font-size: 12px; color: #1e293b; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+<h2>🏢 واحدتنا — Wahdatina</h2>
+<div class="sub">${t('departures_report')} | ${Helpers.fmtDate(Helpers.today())}</div>
+<table>
+  <thead><tr>
+    <th>${t('apt_label')}</th>
+    <th>${t('room_label')}</th>
+    <th>${t('drawer_tenant')}</th>
+    <th>${t('drawer_phone')}</th>
+    <th>${t('move_date')}</th>
+    <th>${t('uf_rent')}</th>
+    <th>${t('uf_deposit')}</th>
+    <th>${t('drawer_notes')}</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="total">${t('total')}: ${moves?.length || 0} ${t('departures_count')}</div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  }
+}
+

@@ -6,6 +6,65 @@
 
 let _movesTab = 'departures';
 
+// ══════════════════════════════════════════
+// archiveUnitToHistory — ⭐ الأهم في المشروع
+// لازم تتكال أول حاجة قبل أي تغيير للوحدة
+// لو فشلت → throw error (مش تكمّل أبداً)
+// ══════════════════════════════════════════
+async function archiveUnitToHistory(unitId, endDate, snapshotType) {
+  // 1. جيب البيانات الحالية
+  const { data: curr, error: fetchErr } = await sb
+    .from('units').select('*').eq('id', unitId).maybeSingle();
+  if (fetchErr) throw new Error(`archiveUnitToHistory fetch: ${fetchErr.message}`);
+  if (!curr)    throw new Error(`Unit ${unitId} not found`);
+
+  // 2. تجاهل لو الوحدة فاضية — مفيش مستأجر يتحفظ
+  if (curr.is_vacant || !curr.tenant_name) {
+    console.log(`archiveUnitToHistory: unit ${curr.apartment}/${curr.room} is vacant — skipped`);
+    return;
+  }
+
+  // 3. حفظ الـ snapshot
+  const { error: histErr } = await sb.from('unit_history').insert({
+    unit_id:       unitId,
+    apartment:     String(curr.apartment),  // Q1: TEXT دايماً
+    room:          String(curr.room),       // Q1: TEXT دايماً
+    tenant_name:   curr.tenant_name,
+    tenant_name2:  curr.tenant_name2  || null,
+    phone:         curr.phone         || null,
+    phone2:        curr.phone2        || null,
+    monthly_rent:  curr.monthly_rent  || 0,
+    deposit:       curr.deposit       || 0,
+    start_date:    curr.start_date    || null,
+    end_date:      endDate            || Helpers.today(),
+    snapshot_type: snapshotType,            // 'departure' | 'transfer' | 'manual'
+    recorded_by:   ME?.id             || null,
+  });
+
+  // 4. لو فشل الحفظ → وقّف كل حاجة (مش console.warn)
+  if (histErr) throw new Error(`Failed to archive unit history: ${histErr.message}`);
+
+  console.log(`✅ unit_history saved: ${curr.apartment}/${curr.room} — ${curr.tenant_name}`);
+}
+
+// ══════════════════════════════════════════
+// Helper: findUnitId بـ apt+room مع تحديث move
+// ══════════════════════════════════════════
+async function findUnitId(apt, room, moveId) {
+  const { data: f, error } = await sb
+    .from('units').select('id')
+    .eq('apartment', String(apt))  // Q1
+    .eq('room', String(room))      // Q1
+    .maybeSingle();
+  if (error) throw error;
+  if (!f) throw new Error(`Unit not found: ${apt}/${room}`);
+  // Q7: حدّث الـ move بالـ unit_id الصح
+  if (moveId) {
+    await sb.from('moves').update({ unit_id: f.id }).eq('id', moveId);
+  }
+  return f.id;
+}
+
 // ─────────────────────────────────────────
 // loadMoves — تحميل شاشة التنقلات
 // ─────────────────────────────────────────
@@ -62,7 +121,10 @@ async function loadDepartures() {
   <div class="moves-stat"><span class="stat-val stat-blue">${booked}</span><span class="stat-lbl">${t('stat_reserved')}</span></div>
 </div>
 
-<button class="add-unit-btn" onclick="openDepartureForm(null)">${t('btn_register_departure')}</button>
+<div style="display:flex;gap:8px;margin-bottom:14px">
+  <button class="add-unit-btn" style="flex:1;margin-bottom:0" onclick="openDepartureForm(null)">${t('btn_register_departure')}</button>
+  <button class="btn btn-secondary" onclick="exportDeparturePDF()" style="white-space:nowrap;padding:10px 14px">🖨 PDF</button>
+</div>
 
 ${moves.length === 0
   ? `<div class="empty-msg">${t('no_departures')}</div>`
@@ -158,7 +220,10 @@ async function saveDepartureEntry() {
 
     // تحديث حالة الوحدة
     if (unit?.id) {
-      await sb.from('units').update({ unit_status: 'leaving_soon', updated_at: new Date().toISOString() }).eq('id', unit.id);
+      const { error: uStatusErr } = await sb.from('units')
+        .update({ unit_status: 'leaving_soon', updated_at: new Date().toISOString() })
+        .eq('id', unit.id);
+      if (uStatusErr) console.warn('leaving_soon update:', uStatusErr.message);
     }
 
     toast(t('toast_departure_saved'), 'success');
@@ -171,44 +236,38 @@ async function saveDepartureEntry() {
 
 async function confirmDeparture(moveId) {
   try {
-    const { data: move, error: mErr } = await sb.from('moves').select('*').eq('id', moveId).maybeSingle();
+    const { data: move, error: mErr } = await sb
+      .from('moves').select('*').eq('id', moveId).maybeSingle();
     if (mErr) throw mErr;
     if (!move) return;
 
+    // Q7: جيب unit_id مع fallback
     let unitId = move.unit_id;
-    // Q7: fallback
-    if (!unitId) {
-      const { data: u } = await sb.from('units').select('id').eq('apartment', String(move.apartment)).eq('room', String(move.room)).maybeSingle();
-      unitId = u?.id;
-    }
+    if (!unitId) unitId = await findUnitId(move.apartment, move.room, moveId);
 
-    if (unitId) {
-      // snapshot في unit_history
-      const { data: curr } = await sb.from('units').select('*').eq('id', unitId).maybeSingle();
-      if (curr) {
-        await sb.from('unit_history').insert({
-          unit_id: unitId, apartment: curr.apartment, room: curr.room,
-          tenant_name: curr.tenant_name, tenant_name2: curr.tenant_name2,
-          phone: curr.phone, phone2: curr.phone2,
-          monthly_rent: curr.monthly_rent, deposit: curr.deposit,
-          start_date: curr.start_date, end_date: move.move_date || Helpers.today(),
-          snapshot_type: 'departure', recorded_by: ME?.id || null,
-        });
-      }
-      // إفراغ الوحدة
-      const { error: uErr } = await sb.from('units').update({
-        tenant_name: null, tenant_name2: null, phone: null, phone2: null,
-        monthly_rent: 0, deposit: 0, persons_count: 1, start_date: null,
-        is_vacant: true, unit_status: 'available', updated_at: new Date().toISOString(),
-      }).eq('id', unitId);
-      if (uErr) throw uErr;
-    }
+    // ⭐ أول حاجة: حفظ التاريخ — لو فشل نوقف كل حاجة
+    await archiveUnitToHistory(unitId, move.move_date || Helpers.today(), 'departure');
 
-    await sb.from('moves').update({ status: 'done' }).eq('id', moveId);
+    // بعدين: إفراغ الوحدة
+    const { error: uErr } = await sb.from('units').update({
+      tenant_name: null, tenant_name2: null,
+      phone: null, phone2: null,
+      monthly_rent: 0, deposit: 0,
+      persons_count: 1, start_date: null,
+      is_vacant: true, unit_status: 'available',
+      updated_at: new Date().toISOString(),
+    }).eq('id', unitId);
+    if (uErr) throw uErr;
+
+    const { error: dErr } = await sb
+      .from('moves').update({ status: 'done' }).eq('id', moveId);
+    if (dErr) throw dErr;
+
     toast(t('toast_departure_confirmed'), 'success');
     loadDepartures();
-    loadHome(); // تحديث الداشبورد
+    loadHome();
   } catch(err) {
+    console.error('confirmDeparture:', err);
     toast(`❌ ${err.message}`, 'error');
   }
 }
@@ -351,14 +410,19 @@ async function saveArrivalEntry() {
 
     // تسجيل عربون مؤقت فوراً
     if (deposit > 0 && unit?.id) {
-      await sb.from('deposits').insert({
+      const { error: depErr } = await sb.from('deposits').insert({
         unit_id: unit.id, apartment: String(apt), room: String(room),
         tenant_name: name, amount: deposit, status: 'held',
         notes: 'عربون حجز', deposit_received_date: Helpers.today(),
         created_by: ME?.id || null,
       });
+      if (depErr) console.warn('عربون insert:', depErr.message);
+
       // تحديث حالة الوحدة لمحجوزة
-      await sb.from('units').update({ unit_status: 'reserved', updated_at: new Date().toISOString() }).eq('id', unit.id);
+      const { error: resErr } = await sb.from('units')
+        .update({ unit_status: 'reserved', updated_at: new Date().toISOString() })
+        .eq('id', unit.id);
+      if (resErr) console.warn('reserved update:', resErr.message);
     }
 
     toast(t('toast_booking_saved'), 'success');
@@ -482,14 +546,17 @@ async function transferAutoFill(side) {
   const room = document.getElementById(`tr-${side}-room`)?.value.trim();
   const info = document.getElementById(`tr-${side}-info`);
   if (!apt || !room || !info) return;
-  const { data } = await sb.from('units').select('tenant_name, monthly_rent, is_vacant')
-    .eq('apartment', String(apt)).eq('room', String(room)).maybeSingle();
-  if (data) {
-    info.textContent = data.is_vacant
-      ? `✅ ${t('vacant_label')}`
-      : `👤 ${data.tenant_name || '—'} • ${Helpers.formatAED(data.monthly_rent)}`;
-  } else {
-    info.textContent = t('unit_not_found');
+  try {
+    const { data, error } = await sb.from('units').select('tenant_name, monthly_rent, is_vacant')
+      .eq('apartment', String(apt)).eq('room', String(room)).maybeSingle();
+    if (error) throw error;
+    info.textContent = data
+      ? (data.is_vacant
+          ? `✅ ${t('vacant_label')}`
+          : `👤 ${data.tenant_name || '—'} • ${Helpers.formatAED(data.monthly_rent)}`)
+      : t('unit_not_found');
+  } catch(err) {
+    if (info) info.textContent = `❌ ${err.message}`;
   }
 }
 
@@ -561,12 +628,20 @@ async function revertTransfer(trId) {
 
     // ارجع الـ snapshots لأماكنها
     if (tr.from_unit_id) {
-      await sb.from('units').update({ ...tr.from_snapshot, updated_at: new Date().toISOString() }).eq('id', tr.from_unit_id);
+      const { error: e1 } = await sb.from('units')
+        .update({ ...tr.from_snapshot, updated_at: new Date().toISOString() })
+        .eq('id', tr.from_unit_id);
+      if (e1) throw e1;
     }
     if (tr.to_unit_id) {
-      await sb.from('units').update({ ...tr.to_snapshot, updated_at: new Date().toISOString() }).eq('id', tr.to_unit_id);
+      const { error: e2 } = await sb.from('units')
+        .update({ ...tr.to_snapshot, updated_at: new Date().toISOString() })
+        .eq('id', tr.to_unit_id);
+      if (e2) throw e2;
     }
-    await sb.from('internal_transfers').update({ is_executed: false }).eq('id', trId);
+    const { error: e3 } = await sb.from('internal_transfers')
+      .update({ is_executed: false }).eq('id', trId);
+    if (e3) throw e3;
 
     toast(t('toast_transfer_reverted'), 'success');
     loadTransfers();
@@ -578,10 +653,14 @@ async function revertTransfer(trId) {
 
 async function deleteTransfer(trId) {
   if (!confirm(t('btn_confirm_delete'))) return;
-  const { error } = await sb.from('internal_transfers').delete().eq('id', trId);
-  if (error) { toast(`❌ ${error.message}`, 'error'); return; }
-  toast(t('toast_move_cancelled'), 'info');
-  loadTransfers();
+  try {
+    const { error } = await sb.from('internal_transfers').delete().eq('id', trId);
+    if (error) throw error;
+    toast(t('toast_move_cancelled'), 'info');
+    loadTransfers();
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  }
 }
 
 // ══════════════════════════════════════════
@@ -766,79 +845,114 @@ async function activateScheduled() {
 }
 
 async function _activateOneArrival(move) {
+  // Q7: جيب unit_id مع fallback + تحديث الـ move
   let unitId = move.unit_id;
-  if (!unitId) {
-    const { data: f } = await sb.from('units').select('id')
-      .eq('apartment', String(move.apartment)).eq('room', String(move.room)).maybeSingle(); // Q1
-    if (!f) { console.warn(`unit not found: ${move.apartment}/${move.room}`); return; }
-    unitId = f.id;
-    await sb.from('moves').update({ unit_id: unitId }).eq('id', move.id); // Q7
-  }
+  if (!unitId) unitId = await findUnitId(move.apartment, move.room, move.id);
 
-  const { data: curr } = await sb.from('units').select('*').eq('id', unitId).maybeSingle();
-  if (curr && !curr.is_vacant) {
-    await sb.from('unit_history').insert({
-      unit_id: unitId, apartment: curr.apartment, room: curr.room,
-      tenant_name: curr.tenant_name, tenant_name2: curr.tenant_name2,
-      phone: curr.phone, phone2: curr.phone2,
-      monthly_rent: curr.monthly_rent, deposit: curr.deposit,
-      start_date: curr.start_date, end_date: move.move_date || Helpers.today(),
-      snapshot_type: 'departure', recorded_by: ME?.id || null,
-    });
-  }
+  // ⭐ أول حاجة: حفظ التاريخ للمستأجر القديم (لو موجود)
+  // لو الوحدة فاضية → archiveUnitToHistory بتتجاهل تلقائياً
+  await archiveUnitToHistory(unitId, move.move_date || Helpers.today(), 'departure');
 
+  // بعدين: تحديث الوحدة بالمستأجر الجديد
   const { error: uErr } = await sb.from('units').update({
-    tenant_name: move.new_tenant_name || null, phone: move.new_phone || null,
-    monthly_rent: move.new_rent || 0, deposit: move.new_deposit || 0,
-    persons_count: move.new_persons || 1, start_date: move.new_start_date || Helpers.today(),
-    language: (move.language || 'AR').toUpperCase(), // Q15
-    is_vacant: false, unit_status: 'occupied', updated_at: new Date().toISOString(),
+    tenant_name:   move.new_tenant_name  || null,
+    phone:         move.new_phone        || null,
+    monthly_rent:  move.new_rent         || 0,
+    deposit:       move.new_deposit      || 0,
+    persons_count: move.new_persons      || 1,
+    start_date:    move.new_start_date   || Helpers.today(),
+    language:      (move.language || 'AR').toUpperCase(),  // Q15
+    is_vacant:     false,
+    unit_status:   'occupied',
+    updated_at:    new Date().toISOString(),
   }).eq('id', unitId);
   if (uErr) throw uErr;
 
   // Q6: guard التأمين
   if (move.new_deposit > 0) {
-    await sb.from('deposits').delete().eq('unit_id', unitId).like('notes', '%عربون حجز%');
-    const { data: existing } = await sb.from('deposits').select('id')
-      .eq('unit_id', unitId).eq('status','held').eq('tenant_name', move.new_tenant_name||'').limit(1);
-    if (!existing || existing.length === 0) {
-      await sb.from('deposits').insert({
-        unit_id: unitId, apartment: String(move.apartment), room: String(move.room), // Q1
-        tenant_name: move.new_tenant_name || null, amount: move.new_deposit,
-        status: 'held', deposit_received_date: Helpers.today(), created_by: ME?.id || null,
+    // حذف العربون أولاً
+    await sb.from('deposits')
+      .delete().eq('unit_id', unitId).like('notes', '%عربون حجز%');
+
+    // تحقق مفيش تأمين نهائي موجود
+    const { data: existing } = await sb.from('deposits')
+      .select('id').eq('unit_id', unitId).eq('status', 'held')
+      .eq('tenant_name', move.new_tenant_name || '').limit(1);
+
+    if (!existing?.length) {
+      const { error: depErr } = await sb.from('deposits').insert({
+        unit_id:               unitId,
+        apartment:             String(move.apartment),  // Q1
+        room:                  String(move.room),       // Q1
+        tenant_name:           move.new_tenant_name || null,
+        amount:                move.new_deposit,
+        status:                'held',
+        deposit_received_date: Helpers.today(),
+        created_by:            ME?.id || null,
       });
+      if (depErr) console.warn('deposit insert:', depErr.message);
     }
   }
 
-  await sb.from('moves').update({ status: 'done', unit_id: unitId }).eq('id', move.id);
+  // تغيير status الـ move لـ done
+  const { error: mErr } = await sb.from('moves')
+    .update({ status: 'done', unit_id: unitId }).eq('id', move.id);
+  if (mErr) throw mErr;
+
   console.log(`✅ activated: ${move.apartment}/${move.room}`);
 }
 
 async function _executeScheduledTransfer(transfer) {
   const { from_snapshot: fSnap, to_snapshot: tSnap } = transfer;
-  if (!fSnap || !tSnap) { console.warn('snapshot missing', transfer.id); return; }
+  if (!fSnap || !tSnap) {
+    console.warn('transfer snapshot missing:', transfer.id);
+    return;
+  }
+
+  // ⭐ أول حاجة: حفظ تاريخ الوحدتين — لو فشل نوقف
+  if (transfer.from_unit_id) {
+    await archiveUnitToHistory(transfer.from_unit_id, transfer.transfer_date, 'transfer');
+  }
+  if (transfer.to_unit_id) {
+    await archiveUnitToHistory(transfer.to_unit_id, transfer.transfer_date, 'transfer');
+  }
+
+  // بعدين: تبديل البيانات بين الوحدتين
   if (transfer.from_unit_id) {
     const { error } = await sb.from('units').update({
-      tenant_name: tSnap.tenant_name||null, phone: tSnap.phone||null,
-      monthly_rent: tSnap.monthly_rent||0, deposit: tSnap.deposit||0,
-      persons_count: tSnap.persons_count||1, start_date: tSnap.start_date||Helpers.today(),
-      language: (tSnap.language||'AR').toUpperCase(), // Q15
-      is_vacant: !tSnap.tenant_name, unit_status: tSnap.tenant_name?'occupied':'available',
-      updated_at: new Date().toISOString(),
+      tenant_name:   tSnap.tenant_name   || null,
+      phone:         tSnap.phone         || null,
+      monthly_rent:  tSnap.monthly_rent  || 0,
+      deposit:       tSnap.deposit       || 0,
+      persons_count: tSnap.persons_count || 1,
+      start_date:    tSnap.start_date    || null,
+      language:      (tSnap.language || 'AR').toUpperCase(),  // Q15
+      is_vacant:     !tSnap.tenant_name,
+      unit_status:   tSnap.tenant_name ? 'occupied' : 'available',
+      updated_at:    new Date().toISOString(),
     }).eq('id', transfer.from_unit_id);
     if (error) throw error;
   }
+
   if (transfer.to_unit_id) {
     const { error } = await sb.from('units').update({
-      tenant_name: fSnap.tenant_name||null, phone: fSnap.phone||null,
-      monthly_rent: fSnap.monthly_rent||0, deposit: fSnap.deposit||0,
-      persons_count: fSnap.persons_count||1, start_date: fSnap.start_date||Helpers.today(),
-      language: (fSnap.language||'AR').toUpperCase(), // Q15
-      is_vacant: !fSnap.tenant_name, unit_status: fSnap.tenant_name?'occupied':'available',
-      updated_at: new Date().toISOString(),
+      tenant_name:   fSnap.tenant_name   || null,
+      phone:         fSnap.phone         || null,
+      monthly_rent:  fSnap.monthly_rent  || 0,
+      deposit:       fSnap.deposit       || 0,
+      persons_count: fSnap.persons_count || 1,
+      start_date:    fSnap.start_date    || null,
+      language:      (fSnap.language || 'AR').toUpperCase(),  // Q15
+      is_vacant:     !fSnap.tenant_name,
+      unit_status:   fSnap.tenant_name ? 'occupied' : 'available',
+      updated_at:    new Date().toISOString(),
     }).eq('id', transfer.to_unit_id);
     if (error) throw error;
   }
-  await sb.from('internal_transfers').update({ is_executed: true }).eq('id', transfer.id);
+
+  const { error: trErr } = await sb.from('internal_transfers')
+    .update({ is_executed: true }).eq('id', transfer.id);
+  if (trErr) throw trErr;
+
   console.log(`✅ transfer executed: ${transfer.id}`);
 }

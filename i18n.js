@@ -294,6 +294,37 @@ const T = {
   theme_changed:      { ar: '✅ تم تغيير الثيم', en: '✅ Theme changed' },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // BUILDINGS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+  manage_buildings:     { ar: 'إدارة المباني',         en: 'Manage Buildings' },
+  building_name_label:  { ar: 'اسم المبنى *',           en: 'Building Name *' },
+  building_name_ph:     { ar: 'مثال: Al Barsha 1',      en: 'e.g. Al Barsha 1' },
+  building_address:     { ar: 'العنوان',                en: 'Address' },
+  building_address_ph:  { ar: 'دبي، الإمارات',         en: 'Dubai, UAE' },
+  btn_save_building:    { ar: '💾 حفظ المبنى',          en: '💾 Save Building' },
+  existing_buildings:   { ar: 'المباني الموجودة',       en: 'Existing Buildings' },
+  no_buildings_yet:     { ar: 'لا توجد مباني — أضف أول مبنى', en: 'No buildings yet — add your first' },
+  building_name_required:{ ar: 'اسم المبنى مطلوب',     en: 'Building name is required' },
+  toast_building_added: { ar: '✅ تم إضافة المبنى',     en: '✅ Building added' },
+  toast_building_updated:{ ar: '✅ تم تحديث المبنى',    en: '✅ Building updated' },
+  building_has_units:   { ar: 'المبنى فيه وحدات مرتبطة — افصلها أولاً', en: 'Building has linked units — unlink them first' },
+  toast_building_deleted:{ ar: '🗑 تم حذف المبنى',      en: '🗑 Building deleted' },
+  all_buildings:        { ar: 'كل المباني',             en: 'All Buildings' },
+  uf_building:          { ar: 'المبنى',                 en: 'Building' },
+  no_building:          { ar: 'بدون مبنى',              en: 'No building' },
+  departures_report:    { ar: 'تقرير المغادرين',        en: 'Departures Report' },
+
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // UNITS DRAWER EXTRAS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+  prev_tenants:           { ar: 'المستأجرون السابقون',      en: 'Previous Tenants' },
+  no_history:             { ar: 'لا يوجد سجل سابق',         en: 'No history recorded' },
+  deposit_already_exists: { ar: 'تأمين مسجّل بالفعل',       en: 'Deposit already exists' },
+  total_held_active:      { ar: 'إجمالي محتجز فعلي',        en: 'Total Active Held' },
+  balance:                { ar: 'متبقي',                     en: 'Balance' },
+  allow_popups:           { ar: 'يرجى السماح بالنوافذ المنبثقة', en: 'Please allow popups' },
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━
   // GENERAL
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
   loading:            { ar: '⏳ جاري التحميل...', en: '⏳ Loading...' },

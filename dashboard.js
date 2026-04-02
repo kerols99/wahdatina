@@ -19,16 +19,19 @@ async function loadHome() {
     const monthFirst = Helpers.currentMonthFirst();
 
     // Q9: جيب كل البيانات دفعة واحدة
+    const monthEnd = Helpers.monthEnd(monthFirst); // آخر يوم صح في الشهر
+
     const [unitsRes, paymentsRes, expensesRes, ownerRes, depositsRes, movesRes] = await Promise.all([
       sb.from('units').select('id, monthly_rent, is_vacant, unit_status, start_date'),
       sb.from('rent_payments')
         .select('amount, payment_month, payment_date, unit_id')
-        .gte('payment_date', monthFirst.slice(0,8) + '01')
-        .lte('payment_date', monthFirst.slice(0,8) + '31'),
+        .gte('payment_date', monthFirst)
+        .lte('payment_date', monthEnd),
       sb.from('expenses').select('amount').eq('period_month', monthFirst),
       sb.from('owner_payments').select('amount').eq('period_month', monthFirst),
       sb.from('deposits').select('refund_amount, refund_date').eq('status','refunded')
-        .gte('refund_date', monthFirst.slice(0,8) + '01'),
+        .gte('refund_date', monthFirst)
+        .lte('refund_date', monthEnd),
       sb.from('moves').select('type, status'),
     ]);
 

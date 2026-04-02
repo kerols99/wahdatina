@@ -50,6 +50,7 @@
     <div class="app-title">🏢 واحدتنا</div>
     <div class="header-actions">
       <button id="lang-btn" class="icon-action-btn" onclick="toggleLang()">EN</button>
+      <button class="icon-action-btn" onclick="openBuildingsManager()" title="Buildings">🏢</button>
       <button class="icon-action-btn" onclick="openThemePanel()" title="Theme">🎨</button>
       <button class="icon-action-btn" onclick="handleLogout()" data-i18n="logout">خروج</button>
     </div>
@@ -65,6 +66,9 @@
 
     <!-- ■ Units Panel -->
     <div id="panel-units" class="panel">
+      <!-- فلتر المباني (يظهر فقط لو في أكتر من مبنى) -->
+      <div id="building-filter-wrap"></div>
+
       <div class="units-toolbar">
         <input type="search" id="units-search" class="search-input"
                data-i18n="search_placeholder" data-i18n-attr="placeholder"
@@ -232,11 +236,11 @@
         <div class="form-row">
           <div class="form-group">
             <label data-i18n="dep_apt">رقم الشقة *</label>
-            <input type="text" id="dep-apt" placeholder="101">
+            <input type="text" id="dep-apt" placeholder="101" onblur="autoFillDeposit()">
           </div>
           <div class="form-group">
             <label data-i18n="dep_room">رقم الغرفة *</label>
-            <input type="text" id="dep-room" placeholder="A">
+            <input type="text" id="dep-room" placeholder="A" onblur="autoFillDeposit()">
           </div>
         </div>
         <div class="form-group">
@@ -402,9 +406,11 @@
     // تطبيق اللغة المحفوظة
     applyLang();
 
-    // Service Worker
+    // Service Worker — مسار relative يشتغل مع GitHub Pages
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(console.warn);
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .then(reg => console.log('SW registered:', reg.scope))
+        .catch(err => console.warn('SW failed:', err));
     }
 
     // بدء التطبيق

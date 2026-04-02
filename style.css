@@ -657,3 +657,83 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
 /* status-amber for move cards */
 .status-amber{background:rgba(245,158,11,.12);color:var(--amber);border-color:rgba(245,158,11,.25)}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   BUILDING FILTER
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+#building-filter-wrap { margin-bottom: 10px; }
+.building-filter {
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.building-filter .filter-btn {
+  background: var(--surf2);
+  border-color: var(--border);
+}
+.building-filter .filter-btn.active {
+  background: var(--accent2);
+  border-color: var(--accent2);
+  color: var(--bg);
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   DEPARTURE BUTTONS ROW
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.add-unit-btn { margin-bottom: 14px; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   WARNING BANNER
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.warning-banner {
+  background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.4);
+  border-right: 4px solid var(--amber);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: 14px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   DRAWER EXTRAS
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.drawer-remaining-banner {
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  margin-bottom: 14px;
+}
+.drawer-paid-banner {
+  background: rgba(34,197,94,0.1);
+  border: 1px solid rgba(34,197,94,0.3);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--green);
+  margin-bottom: 14px;
+}
+.dual-tenant-info {
+  background: var(--surf2);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.88rem;
+}
+.prev-tenants-list { display: flex; flex-direction: column; gap: 8px; }
+.prev-tenant-row {
+  background: var(--surf2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+.prev-tenant-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 3px; }
+.prev-tenant-dates { margin-bottom: 4px; }
+.prev-tenant-amounts { display: flex; gap: 12px; }

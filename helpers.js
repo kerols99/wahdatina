@@ -6,6 +6,15 @@
 
 const Helpers = (() => {
 
+  // آخر يوم في الشهر — يقبل 'YYYY-MM' أو 'YYYY-MM-01'
+  function monthEnd(ym) {
+    // normalize: نأخذ أول 7 حروف YYYY-MM
+    const part = String(ym || '').slice(0, 7);
+    const [y, m] = part.split('-').map(Number);
+    if (!y || !m) return part + '-31'; // fallback
+    return new Date(y, m, 0).toISOString().slice(0, 10);
+  }
+
   // تنسيق المبلغ بالدرهم — أرقام إنجليزية دائماً
   function formatAED(amount) {
     const n = parseFloat(amount) || 0;
@@ -70,11 +79,18 @@ const Helpers = (() => {
     return `W-${rand}`;
   }
 
+  // تنسيق رقم للـ WhatsApp
+  function formatPhone(phone) {
+    let clean = String(phone || '').replace(/\D/g, '');
+    if (clean.startsWith('0'))   clean = '971' + clean.slice(1);  // 05x → 9715x
+    if (clean.length === 9)      clean = '971' + clean;            // 5x → 9715x
+    return clean; // 971XXXXXXXXX
+  }
+
   // فتح واتساب
   function openWhatsApp(phone, message = '') {
     if (!phone) return;
-    const cleaned = phone.replace(/\D/g, '');
-    const num = cleaned.startsWith('0') ? '971' + cleaned.slice(1) : cleaned;
+    const num = formatPhone(phone);
     const url = `https://wa.me/${num}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   }
@@ -104,6 +120,8 @@ const Helpers = (() => {
   }
 
   return {
+    monthEnd,
+    formatPhone,
     formatAED,
     fmtDate,
     fmtMonth,

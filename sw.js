@@ -1,34 +1,36 @@
 // ══════════════════════════════
 // sw.js — Service Worker
 // واحدتنا v1.0
+// ملاحظة: GitHub Pages مع subfolder
+// يسجّل من index.html نفسه بـ scope صح
 // ══════════════════════════════
 
-const CACHE_NAME = 'wahdatina-v1';
+const CACHE_NAME = 'wahdatina-v2';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/manifest.json',
-  '/helpers.js',
-  '/config.js',
-  '/i18n.js',
-  '/auth.js',
-  '/units.js',
-  '/payments.js',
-  '/dashboard.js',
-  '/reports.js',
-  '/moves.js',
+  './',
+  './index.html',
+  './style.css',
+  './manifest.json',
+  './helpers.js',
+  './config.js',
+  './i18n.js',
+  './auth.js',
+  './units.js',
+  './payments.js',
+  './dashboard.js',
+  './reports.js',
+  './moves.js',
 ];
 
-// تثبيت: كاش الملفات الأساسية
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_ASSETS))
+      .catch(err => console.warn('SW cache error:', err))
   );
   self.skipWaiting();
 });
 
-// تفعيل: حذف الكاش القديم
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -38,10 +40,13 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Fetch: Network first، ثم Cache fallback
 self.addEventListener('fetch', event => {
-  // لا تتدخل في طلبات Supabase
-  if (event.request.url.includes('supabase.co')) return;
+  // لا تتدخل في طلبات Supabase أو APIs خارجية
+  if (event.request.url.includes('supabase.co') ||
+      event.request.url.includes('googleapis.com') ||
+      event.request.url.includes('cdn.jsdelivr.net')) {
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)

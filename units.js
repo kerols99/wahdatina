@@ -5,12 +5,30 @@
 'use strict';
 
 let _allUnits       = [];
+let _allBuildings   = [];   // قائمة المباني
 let _unitsFilter    = 'all';
 let _unitsSearch    = '';
+let _buildingFilter = '';   // '' = كل المباني
 let _currentMonthPayments = [];
 
 // expose للـ moves.js
-Object.defineProperty(window, '_allUnits', { get: () => _allUnits });
+Object.defineProperty(window, '_allUnits',     { get: () => _allUnits });
+Object.defineProperty(window, '_allBuildings', { get: () => _allBuildings });
+
+// ══════════════════════════
+// تحميل المباني (مرة واحدة)
+// ══════════════════════════
+async function loadBuildings() {
+  if (_allBuildings.length > 0) return; // cached
+  try {
+    const { data, error } = await sb.from('buildings').select('*').order('name');
+    if (error) throw error;
+    _allBuildings = data || [];
+  } catch(err) {
+    console.warn('loadBuildings:', err.message);
+    _allBuildings = [];
+  }
+}
 
 // ══════════════════════════
 // تحميل الوحدات
@@ -18,14 +36,20 @@ Object.defineProperty(window, '_allUnits', { get: () => _allUnits });
 async function loadUnits() {
   const container = document.getElementById('units-list');
   if (!container) return;
-  container.innerHTML = '<div class="loading">⏳ جاري التحميل...</div>';
+  container.innerHTML = `<div class="loading">${t('loading')}</div>`;
 
   try {
-    // جلب الوحدات + مدفوعات الشهر الحالي دفعة واحدة
     const monthFirst = Helpers.currentMonthFirst();
 
+    // تحميل المباني أولاً (مع cache)
+    await loadBuildings();
+
+    // Q9: جيب الوحدات + المدفوعات دفعة واحدة
+    let unitsQuery = sb.from('units').select('*').order('apartment').order('room');
+    if (_buildingFilter) unitsQuery = unitsQuery.eq('building_id', _buildingFilter);
+
     const [unitsRes, paymentsRes] = await Promise.all([
-      sb.from('units').select('*').order('apartment').order('room'),
+      unitsQuery,
       sb.from('rent_payments')
         .select('unit_id, apartment, room, amount, tenant_num')
         .eq('payment_month', monthFirst)
@@ -34,14 +58,42 @@ async function loadUnits() {
     if (unitsRes.error)    throw unitsRes.error;
     if (paymentsRes.error) throw paymentsRes.error;
 
-    _allUnits              = unitsRes.data || [];
-    _currentMonthPayments  = paymentsRes.data || [];
+    _allUnits             = unitsRes.data || [];
+    _currentMonthPayments = paymentsRes.data || [];
 
+    renderBuildingFilter();
     renderUnitsList();
   } catch (err) {
     console.error('loadUnits error:', err);
-    container.innerHTML = `<div class="error-msg">❌ حدث خطأ: ${Helpers.escapeHtml(err.message)}</div>`;
+    container.innerHTML = `<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`;
   }
+}
+
+// ══════════════════════════
+// فلتر المباني
+// ══════════════════════════
+function renderBuildingFilter() {
+  const wrap = document.getElementById('building-filter-wrap');
+  if (!wrap) return;
+
+  if (_allBuildings.length === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  const opts = [
+    `<button class="filter-btn ${_buildingFilter===''?'active':''}" onclick="setBuildingFilter('')">${t('all_buildings')}</button>`,
+    ..._allBuildings.map(b =>
+      `<button class="filter-btn ${_buildingFilter===b.id?'active':''}" onclick="setBuildingFilter('${b.id}')">${Helpers.escapeHtml(b.name)}</button>`
+    )
+  ].join('');
+
+  wrap.innerHTML = `<div class="filter-row building-filter">${opts}</div>`;
+}
+
+function setBuildingFilter(buildingId) {
+  _buildingFilter = buildingId;
+  loadUnits();
 }
 
 // ══════════════════════════
@@ -162,11 +214,11 @@ async function openUnitDrawer(unitId) {
   const unit = _allUnits.find(u => u.id === unitId);
   if (!unit) return;
 
-  openDrawer(`<div class="drawer-loading">⏳ جاري التحميل...</div>`);
+  openDrawer(`<div class="drawer-loading">${t('loading')}</div>`);
 
   try {
-    // جلب آخر 10 مدفوعات + التأمين
-    const [paymentsRes, depositRes] = await Promise.all([
+    // Q9: جيب كل البيانات دفعة واحدة — مدفوعات + تأمين + تاريخ الوحدة
+    const [paymentsRes, depositRes, historyRes] = await Promise.all([
       sb.from('rent_payments')
         .select('*')
         .eq('unit_id', unitId)
@@ -177,13 +229,27 @@ async function openUnitDrawer(unitId) {
         .eq('unit_id', unitId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+      // المستأجرون السابقون من unit_history
+      sb.from('unit_history')
+        .select('*')
+        .eq('unit_id', unitId)
+        .order('end_date', { ascending: false })
+        .limit(5),
     ]);
 
     if (paymentsRes.error) throw paymentsRes.error;
 
     const payments = paymentsRes.data || [];
     const deposit  = depositRes.data;
+    const history  = historyRes.data || [];
+
+    // مدفوع هذا الشهر للمستأجر الحالي
+    const monthFirst = Helpers.currentMonthFirst();
+    const paidThisMonth = payments
+      .filter(p => p.payment_month === monthFirst)
+      .reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const remaining = Math.max(0, parseFloat(unit.monthly_rent || 0) - paidThisMonth);
 
     const paymentsHtml = payments.length > 0
       ? payments.map(p => `
@@ -205,6 +271,26 @@ async function openUnitDrawer(unitId) {
          </div>`
       : `<div class="muted small">${t('no_deposit')}</div>`;
 
+    const historyHtml = history.length > 0
+      ? history.map(h => `
+          <div class="prev-tenant-row">
+            <div class="prev-tenant-name">👤 ${Helpers.escapeHtml(h.tenant_name || '—')}</div>
+            <div class="prev-tenant-dates muted small">
+              ${Helpers.fmtDate(h.start_date)} → ${Helpers.fmtDate(h.end_date)}
+            </div>
+            <div class="prev-tenant-amounts">
+              <span class="green small">💰 ${Helpers.formatAED(h.monthly_rent)}</span>
+              <span class="amber small">🔒 ${Helpers.formatAED(h.deposit)}</span>
+            </div>
+          </div>`).join('')
+      : `<div class="muted small">${t('no_history')}</div>`;
+
+    const dualTenantHtml = unit.tenant_name2 ? `
+      <div class="dual-tenant-info">
+        <div>👤 ${Helpers.escapeHtml(unit.tenant_name)} — <span class="green">${Helpers.formatAED(unit.rent1 || unit.monthly_rent)}</span></div>
+        <div>👤 ${Helpers.escapeHtml(unit.tenant_name2)} — <span class="green">${Helpers.formatAED(unit.rent2 || 0)}</span></div>
+      </div>` : '';
+
     const content = `
 <div class="drawer-unit">
   <div class="drawer-unit-header">
@@ -212,7 +298,15 @@ async function openUnitDrawer(unitId) {
     <button class="close-btn" onclick="closeDrawer()">✕</button>
   </div>
 
+  ${remaining > 0 ? `
+  <div class="drawer-remaining-banner">
+    ⏳ ${t('kpi_remaining')}: <strong class="amber">${Helpers.formatAED(remaining)}</strong>
+    / ${t('kpi_collected')}: <strong class="green">${Helpers.formatAED(paidThisMonth)}</strong>
+  </div>` : !unit.is_vacant ? `
+  <div class="drawer-paid-banner">✅ ${t('status_paid')} — ${Helpers.fmtMonth(monthFirst)}</div>` : ''}
+
   <div class="info-grid">
+    ${unit.building_id ? `<div class="info-item full"><span class="info-label">${t('uf_building')}</span><span>🏢 ${Helpers.escapeHtml(_allBuildings.find(b=>b.id===unit.building_id)?.name || unit.building_id)}</span></div>` : ''}
     <div class="info-item"><span class="info-label">${t('drawer_tenant')}</span><span>${Helpers.escapeHtml(unit.tenant_name || '—')}</span></div>
     ${unit.tenant_name2 ? `<div class="info-item"><span class="info-label">${t('drawer_partner')}</span><span>${Helpers.escapeHtml(unit.tenant_name2)}</span></div>` : ''}
     <div class="info-item"><span class="info-label">${t('drawer_phone')}</span><span>${Helpers.escapeHtml(unit.phone || '—')}</span></div>
@@ -224,11 +318,17 @@ async function openUnitDrawer(unitId) {
     ${unit.notes ? `<div class="info-item full"><span class="info-label">${t('drawer_notes')}</span><span>${Helpers.escapeHtml(unit.notes)}</span></div>` : ''}
   </div>
 
+  ${dualTenantHtml}
+
   <div class="section-title">${t('drawer_deposit')}</div>
   ${depositHtml}
 
   <div class="section-title">${t('drawer_payments')}</div>
   <div class="payments-history">${paymentsHtml}</div>
+
+  ${history.length > 0 ? `
+  <div class="section-title">👥 ${t('prev_tenants')}</div>
+  <div class="prev-tenants-list">${historyHtml}</div>` : ''}
 
   <div class="drawer-actions">
     <button class="btn btn-primary"  onclick="openEditUnit('${unit.id}')">${t('btn_edit')}</button>
@@ -253,14 +353,31 @@ function openAddUnit() {
 }
 
 async function openEditUnit(unitId) {
-  const unit = _allUnits.find(u => u.id === unitId);
-  if (!unit) return;
-  openDrawer(buildUnitForm(unit));
+  try {
+    const unit = _allUnits.find(u => u.id === unitId);
+    if (!unit) { toast(t('unit_not_found'), 'error'); return; }
+    openDrawer(buildUnitForm(unit));
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  }
 }
 
 function buildUnitForm(unit) {
   const isEdit = !!unit;
   const title  = isEdit ? t('edit_unit_title') : t('add_unit_title');
+
+  // building selector
+  const buildingOpts = _allBuildings.length > 0
+    ? `<div class="form-group">
+        <label>${t('uf_building')}</label>
+        <select id="uf-building">
+          <option value="">${t('no_building')}</option>
+          ${_allBuildings.map(b =>
+            `<option value="${b.id}" ${unit?.building_id === b.id ? 'selected' : ''}>${Helpers.escapeHtml(b.name)}</option>`
+          ).join('')}
+        </select>
+      </div>`
+    : `<input type="hidden" id="uf-building" value="${unit?.building_id || ''}">`;
 
   return `
 <div class="drawer-form">
@@ -268,6 +385,8 @@ function buildUnitForm(unit) {
     <h2>${title}</h2>
     <button class="close-btn" onclick="closeDrawer()">✕</button>
   </div>
+
+  ${buildingOpts}
 
   <div class="form-group">
     <label>${t('uf_apt')}</label>
@@ -359,21 +478,22 @@ function buildUnitForm(unit) {
 // حفظ الوحدة (إضافة / تعديل)
 // ══════════════════════════
 async function saveUnit(unitId = '') {
-  const apt     = document.getElementById('uf-apt')?.value.trim();
-  const room    = document.getElementById('uf-room')?.value.trim();
-  const tenant  = document.getElementById('uf-tenant')?.value.trim();
-  const tenant2 = document.getElementById('uf-tenant2')?.value.trim();
-  const phone   = document.getElementById('uf-phone')?.value.trim();
-  const phone2  = document.getElementById('uf-phone2')?.value.trim();
-  const rent    = parseFloat(document.getElementById('uf-rent')?.value) || 0;
-  const deposit = parseFloat(document.getElementById('uf-deposit')?.value) || 0;
-  const rent1   = parseFloat(document.getElementById('uf-rent1')?.value) || 0;
-  const rent2   = parseFloat(document.getElementById('uf-rent2')?.value) || 0;
-  const start   = document.getElementById('uf-start')?.value || null;
-  const persons = parseInt(document.getElementById('uf-persons')?.value) || 1;
-  const lang    = document.getElementById('uf-lang')?.value || 'AR';
-  const status  = document.getElementById('uf-status')?.value || 'available';
-  const notes   = document.getElementById('uf-notes')?.value.trim();
+  const apt        = document.getElementById('uf-apt')?.value.trim();
+  const room       = document.getElementById('uf-room')?.value.trim();
+  const tenant     = document.getElementById('uf-tenant')?.value.trim();
+  const tenant2    = document.getElementById('uf-tenant2')?.value.trim();
+  const phone      = document.getElementById('uf-phone')?.value.trim();
+  const phone2     = document.getElementById('uf-phone2')?.value.trim();
+  const rent       = parseFloat(document.getElementById('uf-rent')?.value) || 0;
+  const deposit    = parseFloat(document.getElementById('uf-deposit')?.value) || 0;
+  const rent1      = parseFloat(document.getElementById('uf-rent1')?.value) || 0;
+  const rent2      = parseFloat(document.getElementById('uf-rent2')?.value) || 0;
+  const start      = document.getElementById('uf-start')?.value || null;
+  const persons    = parseInt(document.getElementById('uf-persons')?.value) || 1;
+  const lang       = document.getElementById('uf-lang')?.value || 'AR';
+  const status     = document.getElementById('uf-status')?.value || 'available';
+  const notes      = document.getElementById('uf-notes')?.value.trim();
+  const buildingId = document.getElementById('uf-building')?.value || null;
 
   if (Helpers.isEmpty(apt) || Helpers.isEmpty(room)) {
     toast(t('toast_apt_required'), 'error');
@@ -381,6 +501,7 @@ async function saveUnit(unitId = '') {
   }
 
   const payload = {
+    building_id:   buildingId || null,
     apartment:     apt,
     room:          room,
     tenant_name:   tenant  || null,
@@ -492,4 +613,146 @@ function quickPayUnit(unitId) {
     if (roomEl) roomEl.value = unit.room;
     autoFillRent?.();
   }, 100);
+}
+
+// ══════════════════════════
+// resetBuildingsCache — تستخدمها reports.js بعد add/edit/delete مبنى
+// ══════════════════════════
+function resetBuildingsCache() {
+  _allBuildings = [];
+}
+
+// ══════════════════════════════════════════
+// إدارة المباني — Buildings Management
+// الوظائف هنا في units.js لأن المباني مرتبطة بالوحدات مباشرة
+// ══════════════════════════════════════════
+async function openBuildingsManager() {
+  openDrawer(`<div class="drawer-loading">${t('loading')}</div>`);
+  try {
+    const { data: buildings, error } = await sb
+      .from('buildings').select('*').order('name');
+    if (error) throw error;
+
+    // عدد الوحدات لكل مبنى
+    const unitCounts = {};
+    _allUnits.forEach(u => {
+      if (u.building_id) unitCounts[u.building_id] = (unitCounts[u.building_id] || 0) + 1;
+    });
+
+    const list = (buildings || []).map(b => `
+<div class="rpt-row">
+  <div style="display:flex;flex-direction:column;gap:2px;flex:1">
+    <span class="bold">🏢 ${Helpers.escapeHtml(b.name)}</span>
+    ${b.address ? `<span class="muted small">📍 ${Helpers.escapeHtml(b.address)}</span>` : ''}
+    <span class="muted small">${unitCounts[b.id] || 0} ${t('nav_units').replace(/\s*\S+$/, '')}</span>
+  </div>
+  <div style="display:flex;gap:6px">
+    <button class="icon-btn" onclick="editBuilding('${b.id}','${Helpers.escapeHtml(b.name)}','${Helpers.escapeHtml(b.address||'')}')">✏️</button>
+    <button class="icon-btn" onclick="deleteBuilding('${b.id}')">🗑️</button>
+  </div>
+</div>`).join('');
+
+    openDrawer(`
+<div class="drawer-form">
+  <div class="drawer-form-header">
+    <h2>🏢 ${t('manage_buildings')}</h2>
+    <button class="close-btn" onclick="closeDrawer()">✕</button>
+  </div>
+
+  <input type="hidden" id="bld-id" value="">
+  <div class="form-group">
+    <label>${t('building_name_label')}</label>
+    <input type="text" id="bld-name" placeholder="${t('building_name_ph')}">
+  </div>
+  <div class="form-group">
+    <label>${t('building_address')}</label>
+    <input type="text" id="bld-address" placeholder="${t('building_address_ph')}">
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="saveBuilding()">${t('btn_save_building')}</button>
+    <button class="btn btn-secondary" onclick="clearBuildingForm()">${t('btn_cancel')}</button>
+  </div>
+
+  <div class="section-title" style="margin-top:20px">
+    ${t('existing_buildings')} (${(buildings||[]).length})
+  </div>
+  <div id="buildings-list">
+    ${list || `<div class="empty-msg">${t('no_buildings_yet')}</div>`}
+  </div>
+</div>`);
+  } catch(err) {
+    openDrawer(`<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`);
+  }
+}
+
+async function saveBuilding() {
+  const id      = document.getElementById('bld-id')?.value.trim();
+  const name    = document.getElementById('bld-name')?.value.trim();
+  const address = document.getElementById('bld-address')?.value.trim();
+
+  if (!name) { toast(t('building_name_required'), 'error'); return; }
+
+  const btn = document.querySelector('[onclick="saveBuilding()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+  try {
+    let error;
+    if (id) {
+      ({ error } = await sb.from('buildings')
+        .update({ name, address: address || null }).eq('id', id));
+    } else {
+      ({ error } = await sb.from('buildings')
+        .insert({ name, address: address || null }));
+    }
+    if (error) throw error;
+
+    resetBuildingsCache();
+    toast(id ? t('toast_building_updated') : t('toast_building_added'), 'success');
+    openBuildingsManager(); // تحديث الـ drawer نفسه
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = t('btn_save_building'); }
+  }
+}
+
+function editBuilding(id, name, address) {
+  const idEl   = document.getElementById('bld-id');
+  const nameEl = document.getElementById('bld-name');
+  const addrEl = document.getElementById('bld-address');
+  if (idEl)   idEl.value   = id;
+  if (nameEl) nameEl.value = name;
+  if (addrEl) addrEl.value = address;
+  nameEl?.focus();
+  // scroll للأعلى
+  nameEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearBuildingForm() {
+  ['bld-id','bld-name','bld-address'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('bld-name')?.focus();
+}
+
+async function deleteBuilding(id) {
+  if (!confirm(t('btn_confirm_delete'))) return;
+
+  // تحقق إن مفيش وحدات مرتبطة
+  const linked = _allUnits.filter(u => u.building_id === id);
+  if (linked.length > 0) {
+    toast(`❌ ${t('building_has_units')} (${linked.length})`, 'error');
+    return;
+  }
+
+  try {
+    const { error } = await sb.from('buildings').delete().eq('id', id);
+    if (error) throw error;
+    resetBuildingsCache();
+    toast(t('toast_building_deleted'), 'info');
+    openBuildingsManager();
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  }
 }

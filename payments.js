@@ -325,3 +325,58 @@ function resetDepositForm() {
     if (el) el.value = '';
   });
 }
+
+// ══════════════════════════════════════════
+// autoFillDeposit — تعبئة تلقائية مع تحذير
+// ══════════════════════════════════════════
+async function autoFillDeposit() {
+  const apt  = document.getElementById('dep-apt')?.value?.trim();
+  const room = document.getElementById('dep-room')?.value?.trim();
+  if (!apt || !room) return;
+
+  try {
+    const { data: unit, error } = await sb.from('units')
+      .select('id, tenant_name, deposit, start_date, phone')
+      .eq('apartment', String(apt))   // Q1
+      .eq('room', String(room))
+      .maybeSingle();
+    if (error) throw error;
+    if (!unit) return;
+
+    const nameEl = document.getElementById('dep-tenant');
+    const amtEl  = document.getElementById('dep-amount');
+    const dateEl = document.getElementById('dep-received-date');
+
+    if (nameEl && !nameEl.value) nameEl.value = unit.tenant_name || '';
+    if (amtEl  && !amtEl.value)  amtEl.value  = unit.deposit     || '';
+    if (dateEl && !dateEl.value) dateEl.value  = unit.start_date  || '';
+
+    // تحذير لو في تأمين موجود بالفعل
+    const { data: existing } = await sb.from('deposits')
+      .select('id, amount, deposit_received_date')
+      .eq('unit_id', unit.id)
+      .eq('status', 'held')
+      .limit(1);
+
+    if (existing?.length) {
+      showDepositWarning(existing[0]);
+    } else {
+      // إخفاء التحذير لو مش موجود
+      document.getElementById('dep-warning')?.remove();
+    }
+  } catch(err) {
+    console.warn('autoFillDeposit:', err.message);
+  }
+}
+
+function showDepositWarning(dep) {
+  // إزالة أي تحذير قديم
+  document.getElementById('dep-warning')?.remove();
+  const form = document.getElementById('pay-section-deposit');
+  if (!form) return;
+  const warn = document.createElement('div');
+  warn.id = 'dep-warning';
+  warn.className = 'warning-banner';
+  warn.innerHTML = `⚠️ ${t('deposit_already_exists')}: ${Helpers.formatAED(dep.amount)} — ${Helpers.fmtDate(dep.deposit_received_date)}`;
+  form.prepend(warn);
+}
