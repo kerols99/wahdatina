@@ -5,9 +5,12 @@
 'use strict';
 
 let _allUnits       = [];
-let _unitsFilter    = 'all';   // all | paid | partial | unpaid
+let _unitsFilter    = 'all';
 let _unitsSearch    = '';
 let _currentMonthPayments = [];
+
+// expose للـ moves.js
+Object.defineProperty(window, '_allUnits', { get: () => _allUnits });
 
 // ══════════════════════════
 // تحميل الوحدات

@@ -842,13 +842,3 @@ async function _executeScheduledTransfer(transfer) {
   await sb.from('internal_transfers').update({ is_executed: true }).eq('id', transfer.id);
   console.log(`✅ transfer executed: ${transfer.id}`);
 }
-
-function openDepartureForm(unitId) {
-  switchMovesTab('departures');
-  setTimeout(() => openDepartureFormInner(unitId), 100);
-}
-function openDepartureFormInner(unitId) {
-  openDepartureForm_inner = true;
-  const btn = document.querySelector('[onclick*="openDepartureForm"]');
-  if (btn) btn.click();
-}
