@@ -193,6 +193,7 @@ function openDepartureForm(unitId) {
 }
 
 async function saveDepartureEntry() {
+  if (!requireRole('manage_moves')) return;
   const apt   = document.getElementById('dep-form-apt')?.value.trim();
   const room  = document.getElementById('dep-form-room')?.value.trim();
   const name  = document.getElementById('dep-form-name')?.value.trim();
@@ -263,6 +264,7 @@ async function confirmDeparture(moveId) {
       .from('moves').update({ status: 'done' }).eq('id', moveId);
     if (dErr) throw dErr;
 
+    logAction('departure', 'moves', moveId, { apartment: move.apartment, room: move.room, tenant: move.tenant_name });
     toast(t('toast_departure_confirmed'), 'success');
     loadDepartures();
     loadHome();
@@ -376,6 +378,7 @@ function openArrivalForm() {
 }
 
 async function saveArrivalEntry() {
+  if (!requireRole('manage_moves')) return;
   const apt     = document.getElementById('arr-apt')?.value.trim();
   const room    = document.getElementById('arr-room')?.value.trim();
   const name    = document.getElementById('arr-name')?.value.trim();
@@ -446,6 +449,7 @@ async function confirmArrival(moveId) {
     if (!move) return;
     window._schedulerRan = false;
     await _activateOneArrival(move);
+    logAction('arrival', 'moves', moveId, { apartment: move.apartment, room: move.room, tenant: move.new_tenant_name });
     toast(t('toast_arrival_confirmed'), 'success');
     loadArrivals();
     loadHome();
@@ -561,6 +565,7 @@ async function transferAutoFill(side) {
 }
 
 async function saveTransfer() {
+  if (!requireRole('manage_moves')) return;
   const fromApt  = document.getElementById('tr-from-apt')?.value.trim();
   const fromRoom = document.getElementById('tr-from-room')?.value.trim();
   const toApt    = document.getElementById('tr-to-apt')?.value.trim();

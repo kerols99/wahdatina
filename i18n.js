@@ -315,6 +315,39 @@ const T = {
   departures_report:    { ar: 'تقرير المغادرين',        en: 'Departures Report' },
 
 
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // AUDIT LOG
+  audit_log_title:   { ar: 'سجل العمليات',       en: 'Activity Log' },
+  all_actions:       { ar: 'كل العمليات',         en: 'All Actions' },
+  no_audit_logs:     { ar: 'لا يوجد سجلات',       en: 'No activity yet' },
+
+  active:                  { ar: 'نشط',                        en: 'Active' },
+  inactive:                { ar: 'غير نشط',                    en: 'Inactive' },
+  toggle_active:           { ar: 'تفعيل/تعطيل',               en: 'Toggle Active' },
+  toast_user_activated:    { ar: '✅ تم تفعيل الحساب',         en: '✅ Account activated' },
+  toast_user_deactivated:  { ar: '❌ تم تعطيل الحساب',         en: '❌ Account deactivated' },
+  // ADMIN / TEAM
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+  admin_team:              { ar: 'إدارة الفريق',              en: 'Team Management' },
+  btn_add_staff:           { ar: 'إضافة عضو جديد',            en: 'Add New Member' },
+  btn_create_user:         { ar: 'إنشاء الحساب',              en: 'Create Account' },
+  staff_email:             { ar: 'البريد الإلكتروني *',        en: 'Email *' },
+  staff_name:              { ar: 'الاسم الكامل',               en: 'Full Name' },
+  staff_name_ph:           { ar: 'مثال: أحمد محمد',            en: 'e.g. Ahmed Mohamed' },
+  staff_pass:              { ar: 'كلمة المرور *',              en: 'Password *' },
+  staff_role:              { ar: 'الدور',                      en: 'Role' },
+  team_members:            { ar: 'أعضاء الفريق',               en: 'Team Members' },
+  no_team_members:         { ar: 'لا يوجد أعضاء',             en: 'No team members yet' },
+  you:                     { ar: 'أنت',                        en: 'You' },
+  no_permission:           { ar: '🚫 ليس لديك صلاحية',         en: '🚫 No permission' },
+  confirm_delete_staff:    { ar: 'هل تريد حذف هذا العضو؟',    en: 'Delete this member?' },
+  toast_user_created:      { ar: '✅ تم إنشاء الحساب',         en: '✅ Account created' },
+  toast_role_changed:      { ar: '✅ تم تغيير الدور',          en: '✅ Role updated' },
+  toast_staff_deleted:     { ar: '🗑 تم حذف العضو',            en: '🗑 Member deleted' },
+  toast_email_pass_required:{ ar: 'البريد وكلمة المرور مطلوبان', en: 'Email and password required' },
+  toast_pass_too_short:    { ar: 'كلمة المرور أقل من 6 أحرف', en: 'Password too short (min 6)' },
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
   // UNITS DRAWER EXTRAS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━

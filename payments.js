@@ -66,6 +66,7 @@ async function autoFillRent() {
 // تسجيل دفعة إيجار
 // ══════════════════════════
 async function saveRent() {
+  if (!requireRole('add_payment')) return;
   const apt      = document.getElementById('pay-apt')?.value.trim();
   const room     = document.getElementById('pay-room')?.value.trim();
   const tenant   = document.getElementById('pay-tenant')?.value.trim();
@@ -121,6 +122,7 @@ async function saveRent() {
     await createReceipt(inserted, unitId, apt, room, tenant, amount, month, date, method);
 
     toast(t('toast_rent_saved'), 'success');
+    logAction('pay_rent', 'rent_payments', inserted?.id, { apartment: apt, room, tenant: tenant, amount, month: Helpers.fmtMonth(month) });
     resetRentForm();
 
     // تحديث الوحدات إذا كنا في بانل الوحدات
@@ -164,6 +166,7 @@ async function createReceipt(payment, unitId, apt, room, tenant, amount, month, 
 // تسجيل مصروف
 // ══════════════════════════
 async function saveExpense() {
+  if (!requireRole('manage_expenses')) return;
   const category = document.getElementById('exp-cat')?.value.trim();
   const amount   = parseFloat(document.getElementById('exp-amount')?.value);
   const month    = document.getElementById('exp-month')?.value;
@@ -190,6 +193,7 @@ async function saveExpense() {
     const { error } = await sb.from('expenses').insert(payload);
     if (error) throw error;
     toast(t('toast_exp_saved'), 'success');
+    logAction('pay_expense', 'expenses', null, { amount, month: Helpers.fmtMonth(month) });
     resetExpenseForm();
   } catch (err) {
     console.error('saveExpense error:', err);
@@ -201,6 +205,7 @@ async function saveExpense() {
 // تسجيل دفعة المالك
 // ══════════════════════════
 async function saveOwnerPayment() {
+  if (!requireRole('manage_expenses')) return;
   const amount  = parseFloat(document.getElementById('own-amount')?.value);
   const month   = document.getElementById('own-month')?.value;
   const date    = document.getElementById('own-date')?.value;
@@ -229,6 +234,7 @@ async function saveOwnerPayment() {
     const { error } = await sb.from('owner_payments').insert(payload);
     if (error) throw error;
     toast(t('toast_own_saved'), 'success');
+    logAction('pay_owner', 'owner_payments', null, { amount, month: Helpers.fmtMonth(month) });
     resetOwnerForm();
   } catch (err) {
     console.error('saveOwnerPayment error:', err);
@@ -240,6 +246,7 @@ async function saveOwnerPayment() {
 // تسجيل تأمين
 // ══════════════════════════
 async function saveDeposit() {
+  if (!requireRole('add_payment')) return;
   const apt      = document.getElementById('dep-apt')?.value.trim();
   const room     = document.getElementById('dep-room')?.value.trim();
   const tenant   = document.getElementById('dep-tenant')?.value.trim();
@@ -286,6 +293,7 @@ async function saveDeposit() {
     const { error } = await sb.from('deposits').insert(payload);
     if (error) throw error;
     toast(t('toast_dep_saved'), 'success');
+    logAction('pay_deposit', 'deposits', null, { apartment: apt, room, amount });
     resetDepositForm();
   } catch (err) {
     console.error('saveDeposit error:', err);

@@ -478,6 +478,7 @@ function buildUnitForm(unit) {
 // حفظ الوحدة (إضافة / تعديل)
 // ══════════════════════════
 async function saveUnit(unitId = '') {
+  if (!requireRole('manage_units')) return;
   const apt        = document.getElementById('uf-apt')?.value.trim();
   const room       = document.getElementById('uf-room')?.value.trim();
   const tenant     = document.getElementById('uf-tenant')?.value.trim();
@@ -521,7 +522,8 @@ async function saveUnit(unitId = '') {
     updated_at:    new Date().toISOString(),
   };
 
-  if (ME?.id) payload.created_by = ME.id;
+  // units table مش فيها created_by — موجودة في الجداول التانية بس
+  // if (ME?.id) payload.created_by = ME.id;
 
   try {
     let error;
@@ -534,6 +536,8 @@ async function saveUnit(unitId = '') {
     }
     if (error) throw error;
 
+    const action = unitId ? 'edit_unit' : 'add_unit';
+    logAction(action, 'units', unitId || null, { apartment: apt, room });
     toast(unitId ? t('toast_unit_saved') : t('toast_unit_added'), 'success');
     closeDrawer();
     loadUnits();
@@ -547,12 +551,14 @@ async function saveUnit(unitId = '') {
 // حذف الوحدة
 // ══════════════════════════
 async function deleteUnit(unitId) {
+  if (!requireRole('delete')) return;
   if (!confirm(t('btn_confirm_delete'))) return;
 
   try {
     const { error } = await sb.from('units').delete().eq('id', unitId);
     if (error) throw error;
 
+    logAction('delete_unit', 'units', unitId, { apartment: String(unit?.apartment||''), room: String(unit?.room||'') });
     toast(t('toast_unit_deleted'), 'info');
     closeDrawer();
     loadUnits();

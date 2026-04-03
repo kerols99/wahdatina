@@ -51,6 +51,8 @@
     <div class="header-actions">
       <button id="lang-btn" class="icon-action-btn" onclick="toggleLang()">EN</button>
       <button class="icon-action-btn" onclick="openBuildingsManager()" title="Buildings">🏢</button>
+      <span id="user-name" class="user-name-badge"></span>
+      <button class="icon-action-btn" id="admin-btn" onclick="loadAdminPanel()" title="Admin" style="display:none">👑</button>
       <button class="icon-action-btn" onclick="openThemePanel()" title="Theme">🎨</button>
       <button class="icon-action-btn" onclick="handleLogout()" data-i18n="logout">خروج</button>
     </div>
@@ -389,6 +391,7 @@
 <script src="dashboard.js"></script>
 <script src="reports.js"></script>
 <script src="moves.js"></script>
+<script src="admin.js"></script>
 
 <script>
   document.addEventListener('DOMContentLoaded', () => {
