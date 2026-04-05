@@ -333,7 +333,8 @@ async function openUnitDrawer(unitId) {
   <div class="drawer-actions">
     <button class="btn btn-primary"  onclick="openEditUnit('${unit.id}')">${t('btn_edit')}</button>
     <button class="btn btn-success"  onclick="closeDrawer(); quickPayUnit('${unit.id}')">${t('btn_pay')}</button>
-    ${unit.phone ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}')">${t('btn_reminder')}</button>` : ''}
+    ${unit.phone  ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',1)">💬 ${unit.tenant_name  ? Helpers.escapeHtml(unit.tenant_name.split(' ')[0])  : t('btn_reminder')}</button>` : ''}
+    ${unit.phone2 && unit.tenant_name2 ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',2)">💬 ${Helpers.escapeHtml(unit.tenant_name2.split(' ')[0])}</button>` : ''}
     ${!unit.is_vacant ? `<button class="btn btn-warning" onclick="openDepartureForm('${unit.id}')">${t('btn_departure')}</button>` : ''}
   </div>
 </div>`;

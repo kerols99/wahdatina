@@ -73,6 +73,7 @@ async function loadMonthly() {
 <div class="report-controls">
   <input type="month" id="rpt-month" value="${monthFirst.slice(0,7)}" onchange="loadMonthly()">
   <button class="btn btn-secondary" onclick="exportMonthlyPDF()">${t('btn_export_pdf')}</button>
+  <button class="btn btn-secondary" onclick="exportCSV('payments')">📥 CSV</button>
 </div>
 <div id="rpt-monthly-body"><div class="loading">${t('loading')}</div></div>`;
     await _renderMonthly();
@@ -729,3 +730,79 @@ async function exportDeparturePDF() {
   }
 }
 
+
+// ══════════════════════════════════════════
+// exportCSV — تصدير CSV
+// ══════════════════════════════════════════
+async function exportCSV(type = 'payments') {
+  try {
+    let rows = [], headers = [], filename = '';
+
+    if (type === 'payments') {
+      const monthEl = document.getElementById('rpt-month');
+      const month   = (monthEl?.value || Helpers.currentMonthFirst().slice(0,7)) + '-01';
+      const { data, error } = await sb.from('rent_payments')
+        .select('apartment,room,tenant_name,amount,payment_month,payment_date,payment_method')
+        .eq('payment_month', month).order('apartment').order('room');
+      if (error) throw error;
+      headers   = ['apartment','room','tenant_name','amount','payment_month','payment_date','payment_method'];
+      rows      = data || [];
+      filename  = `payments_${month.slice(0,7)}.csv`;
+
+    } else if (type === 'units') {
+      const { data, error } = await sb.from('units')
+        .select('apartment,room,tenant_name,monthly_rent,deposit,phone,unit_status,start_date')
+        .order('apartment').order('room');
+      if (error) throw error;
+      headers  = ['apartment','room','tenant_name','monthly_rent','deposit','phone','unit_status','start_date'];
+      rows     = data || [];
+      filename = 'units.csv';
+
+    } else if (type === 'deposits') {
+      const { data, error } = await sb.from('deposits')
+        .select('apartment,room,tenant_name,amount,status,refund_amount,deposit_received_date,refund_date')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      headers  = ['apartment','room','tenant_name','amount','status','refund_amount','deposit_received_date','refund_date'];
+      rows     = data || [];
+      filename = 'deposits.csv';
+
+    } else if (type === 'expenses') {
+      const { data, error } = await sb.from('expenses')
+        .select('category,amount,period_month,description,receipt_no')
+        .order('period_month', { ascending: false });
+      if (error) throw error;
+      headers  = ['category','amount','period_month','description','receipt_no'];
+      rows     = data || [];
+      filename = 'expenses.csv';
+    }
+
+    if (!rows.length) { toast(t('no_data_to_export'), 'info'); return; }
+
+    // بناء الـ CSV
+    const escape = v => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => headers.map(h => escape(r[h])).join(','))
+    ].join('\n');
+
+    // تحميل
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast(`✅ ${t('toast_csv_exported')}: ${filename}`, 'success');
+  } catch(err) {
+    toast(`❌ ${err.message}`, 'error');
+  }
+}

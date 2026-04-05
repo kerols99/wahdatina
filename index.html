@@ -83,7 +83,7 @@
           <button class="filter-btn"        data-filter="unpaid"  onclick="setUnitsFilter('unpaid')"  data-i18n="filter_unpaid">غير مدفوع</button>
         </div>
       </div>
-      <button class="add-unit-btn" onclick="openAddUnit()" data-i18n="add_unit">➕ إضافة وحدة جديدة</button>
+      <button class="add-unit-btn" onclick="openAddUnit()" data-role="units" data-i18n="add_unit">➕ إضافة وحدة جديدة</button>
       <div id="units-list"><div class="loading">⏳</div></div>
     </div>
 
@@ -159,7 +159,7 @@
       </div>
 
       <!-- Expense -->
-      <div id="pay-section-expense" class="pay-section">
+      <div id="pay-section-expense" data-role="expenses" class="pay-section">
         <div class="form-group">
           <label data-i18n="exp_cat">الفئة</label>
           <input type="text" id="exp-cat"
@@ -192,7 +192,7 @@
       </div>
 
       <!-- Owner -->
-      <div id="pay-section-owner" class="pay-section">
+      <div id="pay-section-owner" data-role="expenses" class="pay-section">
         <div class="form-row">
           <div class="form-group">
             <label data-i18n="own_amount">المبلغ *</label>
@@ -300,7 +300,7 @@
     </div>
 
     <!-- ■ Moves Panel -->
-    <div id="panel-moves" class="panel">
+    <div id="panel-moves" data-role="moves" class="panel">
       <div id="moves-content"></div>
     </div>
 

@@ -318,6 +318,12 @@ const T = {
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
+  no_data_to_export:   { ar: 'لا توجد بيانات للتصدير',     en: 'No data to export' },
+  toast_csv_exported:  { ar: '✅ تم تصدير الملف',           en: '✅ File exported' },
+  quick_report_title:  { ar: 'تقرير التحصيل السريع',        en: 'Quick Collection Report' },
+  quick_coll_report:   { ar: 'تحصيل سريع',                 en: 'Quick Report' },
+  toast_phone_required:{ ar: 'رقم الهاتف مطلوب',           en: 'Phone number required' },
   // AUDIT LOG
   audit_log_title:   { ar: 'سجل العمليات',       en: 'Activity Log' },
   all_actions:       { ar: 'كل العمليات',         en: 'All Actions' },

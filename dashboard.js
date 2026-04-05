@@ -142,6 +142,7 @@ ${(pendingArrivals + pendingDepartures) > 0 ? `
   <button class="quick-btn" onclick="goPanel('units')"><span>${t('quick_units')}</span></button>
   <button class="quick-btn" onclick="goPanel('pay')"><span>${t('quick_pay')}</span></button>
   <button class="quick-btn" onclick="goPanel('reports')"><span>${t('quick_reports')}</span></button>
+  <button class="quick-btn" onclick="loadCollReport()"><span>📊 ${t('quick_coll_report')}</span></button>
   <button class="quick-btn" onclick="goPanel('moves')"><span>${t('quick_moves')}</span></button>
 </div>
 
@@ -155,6 +156,113 @@ ${(pendingArrivals + pendingDepartures) > 0 ? `
   } catch (err) {
     console.error('loadHome error:', err);
     container.innerHTML = `<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`;
+  }
+}
+
+
+// ══════════════════════════════════════════
+// loadCollReport — تقرير التحصيل السريع
+// اختيار شهر → KPI bar + قائمة مجمّعة حسب شقة + PDF
+// ══════════════════════════════════════════
+async function loadCollReport() {
+  const monthFirst = Helpers.currentMonthFirst();
+  openDrawer(`
+<div class="drawer-form">
+  <div class="drawer-form-header">
+    <h2>📊 ${t('quick_report_title')}</h2>
+    <button class="close-btn" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="report-controls" style="margin-bottom:16px">
+    <input type="month" id="coll-month" value="${monthFirst.slice(0,7)}"
+      onchange="renderCollReport()">
+    <button class="btn btn-secondary" onclick="exportCollPDF()">${t('btn_export_pdf')}</button>
+  </div>
+  <div id="coll-report-body"><div class="loading">${t('loading')}</div></div>
+</div>`);
+  await renderCollReport();
+}
+
+async function renderCollReport() {
+  const monthEl = document.getElementById('coll-month');
+  const body    = document.getElementById('coll-report-body');
+  if (!monthEl || !body) return;
+
+  const monStart = monthEl.value + '-01';
+  const monEnd   = Helpers.monthEnd(monStart);
+
+  try {
+    const [unitsRes, paysRes, depsRes, refundsRes] = await Promise.all([
+      sb.from('units').select('id,apartment,room,tenant_name,monthly_rent,is_vacant').order('apartment').order('room'),
+      sb.from('rent_payments').select('unit_id,amount').eq('payment_month', monStart),
+      sb.from('deposits').select('unit_id,amount').gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
+      sb.from('deposits').select('unit_id,refund_amount').gt('refund_amount',0).gte('refund_date', monStart).lte('refund_date', monEnd),
+    ]);
+
+    if (unitsRes.error) throw unitsRes.error;
+
+    const units   = unitsRes.data || [];
+    const pays    = paysRes.data  || [];
+    const deps    = depsRes.data  || [];
+    const refunds = refundsRes.data || [];
+
+    const paidMap = {};
+    pays.forEach(p => { paidMap[p.unit_id] = (paidMap[p.unit_id]||0) + parseFloat(p.amount||0); });
+
+    const totalRent    = pays.reduce((s,p) => s+parseFloat(p.amount||0), 0);
+    const totalDeps    = deps.reduce((s,d) => s+parseFloat(d.amount||0), 0);
+    const totalRefunds = refunds.reduce((s,r) => s+parseFloat(r.refund_amount||0), 0);
+    const totalTarget  = units.filter(u => !u.is_vacant).reduce((s,u) => s+parseFloat(u.monthly_rent||0), 0);
+    const totalNet     = totalRent + totalDeps - totalRefunds;
+
+    // تجميع حسب شقة
+    const aptMap = {};
+    units.filter(u => !u.is_vacant).forEach(u => {
+      const apt = u.apartment;
+      if (!aptMap[apt]) aptMap[apt] = { apt, units: [], paid: 0, target: 0 };
+      const paid = paidMap[u.id] || 0;
+      aptMap[apt].units.push({ ...u, paid });
+      aptMap[apt].paid   += paid;
+      aptMap[apt].target += parseFloat(u.monthly_rent||0);
+    });
+
+    const groups = Object.values(aptMap).sort((a,b) => a.apt.localeCompare(b.apt, undefined, {numeric:true}));
+    window._collReportData = { groups, totalRent, totalDeps, totalRefunds, totalTarget, totalNet, monStart };
+
+    body.innerHTML = `
+<div id="coll-report-content">
+<div class="rpt-kpi-bar">
+  <div class="rpt-kpi"><span class="rpt-kpi-val green">${Helpers.formatAED(totalRent)}</span><span class="rpt-kpi-lbl">${t('kpi_collected')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val blue">${Helpers.formatAED(totalDeps)}</span><span class="rpt-kpi-lbl">${t('deposits_received')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val red">${Helpers.formatAED(totalRefunds)}</span><span class="rpt-kpi-lbl">${t('refunds_lbl')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val amber">${Helpers.formatAED(Math.max(0,totalTarget-totalRent))}</span><span class="rpt-kpi-lbl">${t('kpi_remaining')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val">${Helpers.formatAED(totalNet)}</span><span class="rpt-kpi-lbl">${t('net_profit')}</span></div>
+</div>
+${groups.map(g => `
+<div class="rpt-apt-group">
+  <div class="rpt-apt-header">
+    <span>${t('apt_label')} ${Helpers.escapeHtml(g.apt)}</span>
+    <span class="${g.paid >= g.target && g.target>0 ? 'green' : g.paid>0 ? 'amber' : 'red'}">${Helpers.formatAED(g.paid)} / ${Helpers.formatAED(g.target)}</span>
+  </div>
+  ${g.units.map(u => `
+  <div class="rpt-unit-row">
+    <span class="muted">${t('room_label')} ${Helpers.escapeHtml(u.room)}</span>
+    <span>${Helpers.escapeHtml(u.tenant_name||'—')}</span>
+    <span class="${u.paid>=parseFloat(u.monthly_rent||0)?'green':u.paid>0?'amber':'red'}">${Helpers.formatAED(u.paid)}</span>
+    <span class="muted">${Helpers.formatAED(u.monthly_rent)}</span>
+  </div>`).join('')}
+</div>`).join('')}
+</div>`;
+  } catch(err) {
+    body.innerHTML = `<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function exportCollPDF() {
+  const d = window._collReportData;
+  if (!d) return;
+  const bodyHTML = document.getElementById('coll-report-content')?.innerHTML || '';
+  if (typeof exportPDF === 'function') {
+    await exportPDF(`${t('quick_report_title')} — ${Helpers.fmtMonth(d.monStart)}`, bodyHTML);
   }
 }
 

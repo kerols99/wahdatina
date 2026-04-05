@@ -696,8 +696,9 @@ function renderWelcomeLetter() {
     <div class="form-group"><label>${t('id_number')}</label><input type="text" id="wl-id" placeholder="784-..."></div>
   </div>
   <div class="form-actions">
-    <button class="btn btn-primary" onclick="previewWelcomeLetter()">${t('btn_preview')}</button>
-    <button class="btn btn-success" onclick="printWelcomeLetter()">${t('btn_print')}</button>
+    <button class="btn btn-primary"  onclick="previewWelcomeLetter()">${t('btn_preview')}</button>
+    <button class="btn btn-success"  onclick="printWelcomeLetter()">${t('btn_print')}</button>
+    <button class="btn btn-whatsapp" onclick="sendWelcomeWhatsApp()" id="wl-wa-btn">💬 WhatsApp</button>
   </div>
 </div>
 <div id="wl-preview" style="display:none;margin-top:20px"></div>`;
@@ -790,6 +791,38 @@ async function printWelcomeLetter() {
   const data = getWelcomeFormData();
   if (!data.name || !data.apt) { toast(t('toast_apt_required'), 'error'); return; }
   await exportPDF(t('moves_welcome') + ' — ' + Helpers.escapeHtml(data.name), buildWelcomeHTML(data));
+}
+
+function sendWelcomeWhatsApp() {
+  const data = getWelcomeFormData();
+  if (!data.name || !data.apt) { toast(t('toast_apt_required'), 'error'); return; }
+  if (!data.phone) { toast(t('toast_phone_required'), 'error'); return; }
+
+  const monthLabel = data.date ? Helpers.fmtDate(data.date) : '';
+  const lang = (data.language || 'AR').toUpperCase();
+
+  let msg;
+  if (lang === 'AR') {
+    msg = `مرحباً ${data.name} 👋
+نرسل لكم إيصال الحجز لوحدتكم:
+🏠 شقة ${data.apt} — غرفة ${data.room}
+💰 الإيجار: ${Helpers.formatAED(data.rent)} شهرياً
+🔒 التأمين: ${Helpers.formatAED(data.deposit)}
+📅 تاريخ البداية: ${monthLabel}
+${data.building ? '🏢 ' + data.building : ''}
+أهلاً وسهلاً بكم 🙏`;
+  } else {
+    msg = `Hello ${data.name} 👋
+Your booking receipt:
+🏠 Apt ${data.apt} — Room ${data.room}
+💰 Rent: ${Helpers.formatAED(data.rent)}/month
+🔒 Deposit: ${Helpers.formatAED(data.deposit)}
+📅 Start: ${monthLabel}
+${data.building ? '🏢 ' + data.building : ''}
+Welcome! 🙏`;
+  }
+
+  Helpers.openWhatsApp(data.phone, msg);
 }
 
 function getWelcomeFormData() {
