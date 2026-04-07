@@ -220,12 +220,15 @@ p{font-size:1rem;line-height:1.7;color:var(--muted)}
   display:flex;z-index:100;
   padding-bottom:env(safe-area-inset-bottom)
 }
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   BOTTOM NAV — icons only + hamburger
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 .nav-btn{
-  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:2px;padding:8px 2px 6px;background:none;border:none;
-  color:var(--muted);font-size:0.6rem;font-family:var(--font);font-weight:600;
-  cursor:pointer;transition:color var(--transition);
-  position:relative;overflow:hidden;min-width:0
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:10px 4px 12px;background:none;border:none;
+  color:var(--muted);font-size:1.5rem;
+  cursor:pointer;transition:color var(--transition),transform var(--transition);
+  position:relative
 }
 .nav-btn::before{
   content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
@@ -234,15 +237,41 @@ p{font-size:1rem;line-height:1.7;color:var(--muted)}
 }
 .nav-btn.active::before{width:36px}
 .nav-btn.active{color:var(--accent)}
-.nav-btn .nav-icon{font-size:1.25rem;line-height:1;flex-shrink:0}
-.nav-btn span:not(.nav-icon){
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  max-width:100%;display:block
+.nav-btn:active{transform:scale(0.88)}
+.nav-hamburger{font-size:1.3rem;font-weight:900}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   NAV MENU DRAWER
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.nav-menu{
+  position:fixed;bottom:-100%;left:0;right:0;
+  background:var(--surf);border-radius:20px 20px 0 0;
+  border-top:2px solid var(--accent);
+  z-index:150;padding:0 0 env(safe-area-inset-bottom);
+  transition:bottom .3s cubic-bezier(.22,1,.36,1);
+  box-shadow:0 -8px 32px rgba(0,0,0,0.25)
 }
-@media(min-width:768px){
-  .nav-btn{font-size:0.75rem;padding:12px 8px 10px}
-  .nav-btn .nav-icon{font-size:1.4rem}
+.nav-menu.open{bottom:0}
+.nav-menu-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px 12px;border-bottom:1px solid var(--border);
+  font-weight:800;font-size:1rem;color:var(--accent)
 }
+.nav-menu-close{
+  background:var(--surf2);border:none;border-radius:50%;
+  width:32px;height:32px;font-size:1rem;
+  cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center
+}
+.nav-menu-item{
+  width:100%;display:flex;align-items:center;gap:14px;
+  padding:16px 24px;background:none;border:none;
+  font-size:1rem;font-weight:700;font-family:var(--font);
+  color:var(--text);cursor:pointer;text-align:right;direction:rtl;
+  border-bottom:1px solid var(--border);
+  transition:background var(--transition)
+}
+.nav-menu-item:last-child{border-bottom:none}
+.nav-menu-item:active{background:var(--surf2)}
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    DASHBOARD
@@ -841,15 +870,3 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   margin-bottom: 4px;
 }
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   NAV — إخفاء النص في الشاشات الصغيرة
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-@media(max-width:374px){
-  .nav-btn span:not(.nav-icon){ display:none }
-  .nav-btn{ padding:10px 2px }
-}
-/* لما الـ header مضغوط — نصغّر الـ nav text */
-@media(max-width:420px){
-  .nav-btn{ font-size:0.55rem }
-  .nav-btn .nav-icon{ font-size:1.2rem }
-}

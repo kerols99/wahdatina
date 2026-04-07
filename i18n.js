@@ -319,6 +319,7 @@ const T = {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+  nav_menu_title: { ar: 'القائمة', en: 'Menu' },
   no_data_to_export:   { ar: 'لا توجد بيانات للتصدير',     en: 'No data to export' },
   toast_csv_exported:  { ar: '✅ تم تصدير الملف',           en: '✅ File exported' },
   quick_report_title:  { ar: 'تقرير التحصيل السريع',        en: 'Quick Collection Report' },

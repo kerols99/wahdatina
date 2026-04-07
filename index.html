@@ -307,22 +307,29 @@
   </div><!-- end panels-wrap -->
 
   <!-- Bottom Nav -->
+  <!-- Nav Menu Overlay -->
+  <div id="nav-overlay" onclick="closeNavMenu()" style="display:none;position:fixed;inset:0;z-index:149;background:rgba(0,0,0,0.4)"></div>
+
+  <!-- Nav Drawer (slide up) -->
+  <div id="nav-menu" class="nav-menu">
+    <div class="nav-menu-header">
+      <span data-i18n="nav_menu_title">القائمة</span>
+      <button onclick="closeNavMenu()" class="nav-menu-close">✕</button>
+    </div>
+    <button class="nav-menu-item" onclick="goPanel('home');   closeNavMenu()">🏠 <span data-i18n="nav_home">الرئيسية</span></button>
+    <button class="nav-menu-item" onclick="goPanel('units');  closeNavMenu()">🏢 <span data-i18n="nav_units">الوحدات</span></button>
+    <button class="nav-menu-item" onclick="goPanel('pay');    closeNavMenu()">💰 <span data-i18n="nav_pay">إضافة دفعة</span></button>
+    <button class="nav-menu-item" onclick="goPanel('reports');closeNavMenu()">📊 <span data-i18n="nav_reports">التقارير</span></button>
+    <button class="nav-menu-item" onclick="goPanel('moves');  closeNavMenu()">🚀 <span data-i18n="nav_moves">التنقلات</span></button>
+  </div>
+
   <nav class="bottom-nav">
-    <button class="nav-btn active" data-panel="home"    onclick="goPanel('home')">
-      <span class="nav-icon">🏠</span><span data-i18n="nav_home">الرئيسية</span>
-    </button>
-    <button class="nav-btn" data-panel="units"   onclick="goPanel('units')">
-      <span class="nav-icon">🏢</span><span data-i18n="nav_units">الوحدات</span>
-    </button>
-    <button class="nav-btn" data-panel="pay"     onclick="goPanel('pay')">
-      <span class="nav-icon">💰</span><span data-i18n="nav_pay">إضافة</span>
-    </button>
-    <button class="nav-btn" data-panel="reports" onclick="goPanel('reports')">
-      <span class="nav-icon">📊</span><span data-i18n="nav_reports">التقارير</span>
-    </button>
-    <button class="nav-btn" data-panel="moves"   onclick="goPanel('moves')">
-      <span class="nav-icon">🚀</span><span data-i18n="nav_moves">التنقلات</span>
-    </button>
+    <button class="nav-btn active" data-panel="home"    onclick="goPanel('home')">🏠</button>
+    <button class="nav-btn"        data-panel="units"   onclick="goPanel('units')">🏢</button>
+    <button class="nav-btn"        data-panel="pay"     onclick="goPanel('pay')">💰</button>
+    <button class="nav-btn"        data-panel="reports" onclick="goPanel('reports')">📊</button>
+    <button class="nav-btn"        data-panel="moves"   onclick="goPanel('moves')">🚀</button>
+    <button class="nav-btn nav-hamburger" onclick="openNavMenu()">☰</button>
   </nav>
 
 </div><!-- end app-screen -->
