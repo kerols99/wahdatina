@@ -221,57 +221,25 @@ p{font-size:1rem;line-height:1.7;color:var(--muted)}
   padding-bottom:env(safe-area-inset-bottom)
 }
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   BOTTOM NAV — icons only + hamburger
+   BOTTOM NAV
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 .nav-btn{
-  flex:1;display:flex;align-items:center;justify-content:center;
-  padding:10px 4px 12px;background:none;border:none;
-  color:var(--muted);font-size:1.5rem;
-  cursor:pointer;transition:color var(--transition),transform var(--transition);
-  position:relative
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:8px 2px 10px;background:none;border:none;
+  color:var(--muted);cursor:pointer;
+  transition:color var(--transition),transform var(--transition);
+  position:relative;font-family:var(--font)
 }
 .nav-btn::before{
   content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
   width:0;height:3px;background:var(--accent);
   transition:width var(--transition);border-radius:0 0 4px 4px
 }
-.nav-btn.active::before{width:36px}
-.nav-btn.active{color:var(--accent)}
-.nav-btn:active{transform:scale(0.88)}
-.nav-hamburger{font-size:1.3rem;font-weight:900}
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   NAV MENU DRAWER
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-.nav-menu{
-  position:fixed;bottom:-100%;left:0;right:0;
-  background:var(--surf);border-radius:20px 20px 0 0;
-  border-top:2px solid var(--accent);
-  z-index:150;padding:0 0 env(safe-area-inset-bottom);
-  transition:bottom .3s cubic-bezier(.22,1,.36,1);
-  box-shadow:0 -8px 32px rgba(0,0,0,0.25)
-}
-.nav-menu.open{bottom:0}
-.nav-menu-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:16px 20px 12px;border-bottom:1px solid var(--border);
-  font-weight:800;font-size:1rem;color:var(--accent)
-}
-.nav-menu-close{
-  background:var(--surf2);border:none;border-radius:50%;
-  width:32px;height:32px;font-size:1rem;
-  cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center
-}
-.nav-menu-item{
-  width:100%;display:flex;align-items:center;gap:14px;
-  padding:16px 24px;background:none;border:none;
-  font-size:1rem;font-weight:700;font-family:var(--font);
-  color:var(--text);cursor:pointer;text-align:right;direction:rtl;
-  border-bottom:1px solid var(--border);
-  transition:background var(--transition)
-}
-.nav-menu-item:last-child{border-bottom:none}
-.nav-menu-item:active{background:var(--surf2)}
+.nav-btn.active::before{width:32px}
+.nav-btn.active{ color:var(--accent) }
+.nav-btn:active{ transform:scale(0.9) }
+.nav-icon{ font-size:1.35rem;line-height:1 }
+.nav-label{ font-size:0.62rem;font-weight:700;line-height:1;white-space:nowrap }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    DASHBOARD
@@ -870,3 +838,63 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   margin-bottom: 4px;
 }
 
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   HEADER DROPDOWN MENU
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.header-menu-wrap { position: relative; }
+
+.header-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 160px;
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.header-dropdown button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  text-align: right;
+  direction: rtl;
+  transition: background var(--transition);
+}
+
+.header-dropdown button:last-child { border-bottom: none; }
+.header-dropdown button:active,
+.header-dropdown button:hover { background: var(--surf2); }
+.header-dropdown button.red { color: var(--red); }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   LOGO
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.header-logo {
+  width: 32px;
+  height: 32px;
+  vertical-align: middle;
+  margin-left: 6px;
+  border-radius: 8px;
+}
+.login-logo { margin-bottom: 8px; }
+.login-logo-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+}

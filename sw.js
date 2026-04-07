@@ -11,6 +11,7 @@ const STATIC_ASSETS = [
   './index.html',
   './style.css',
   './manifest.json',
+  './logo.svg',
   './helpers.js',
   './config.js',
   './i18n.js',

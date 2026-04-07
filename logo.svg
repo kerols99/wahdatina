@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#818cf8"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="60" cy="60" r="56" fill="url(#g1)"/>
+  
+  <!-- Building shape -->
+  <!-- Main building -->
+  <rect x="28" y="45" width="28" height="40" rx="2" fill="white" opacity="0.95"/>
+  <!-- Tall building right -->
+  <rect x="62" y="32" width="28" height="53" rx="2" fill="white" opacity="0.85"/>
+  
+  <!-- Windows left building -->
+  <rect x="33" y="52" width="7" height="7" rx="1" fill="#6366f1" opacity="0.6"/>
+  <rect x="44" y="52" width="7" height="7" rx="1" fill="#6366f1" opacity="0.6"/>
+  <rect x="33" y="64" width="7" height="7" rx="1" fill="#6366f1" opacity="0.6"/>
+  <rect x="44" y="64" width="7" height="7" rx="1" fill="#6366f1" opacity="0.6"/>
+  
+  <!-- Windows right building -->
+  <rect x="67" y="39" width="7" height="7" rx="1" fill="#6366f1" opacity="0.5"/>
+  <rect x="78" y="39" width="7" height="7" rx="1" fill="#6366f1" opacity="0.5"/>
+  <rect x="67" y="51" width="7" height="7" rx="1" fill="#6366f1" opacity="0.5"/>
+  <rect x="78" y="51" width="7" height="7" rx="1" fill="#6366f1" opacity="0.5"/>
+  <rect x="67" y="63" width="7" height="7" rx="1" fill="#6366f1" opacity="0.5"/>
+  <rect x="78" y="63" width="7" height="7" rx="1" fill="#6366f1" opacity="0.5"/>
+  
+  <!-- Ground line -->
+  <rect x="20" y="84" width="78" height="3" rx="1.5" fill="white" opacity="0.7"/>
+  
+  <!-- W letter at bottom -->
+  <text x="60" y="108" font-family="Arial Black, sans-serif" font-size="14" font-weight="900" 
+        fill="white" text-anchor="middle" opacity="0.9">واحدتنا</text>
+</svg>

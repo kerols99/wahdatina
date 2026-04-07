@@ -180,3 +180,24 @@ function closeNavMenu() {
   document.getElementById('nav-overlay').style.display = 'none';
   document.body.style.overflow = '';
 }
+
+// ══════════════════════════════════════════
+// Header dropdown menu
+// ══════════════════════════════════════════
+function toggleHeaderMenu() {
+  const menu = document.getElementById('header-menu');
+  if (!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+  // إغلاق بالضغط خارجه
+  if (!isOpen) {
+    setTimeout(() => {
+      document.addEventListener('click', function handler(e) {
+        if (!document.getElementById('header-menu-btn')?.contains(e.target)) {
+          menu.style.display = 'none';
+          document.removeEventListener('click', handler);
+        }
+      });
+    }, 0);
+  }
+}
