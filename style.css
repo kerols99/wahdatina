@@ -221,24 +221,27 @@ p{font-size:1rem;line-height:1.7;color:var(--muted)}
   padding-bottom:env(safe-area-inset-bottom)
 }
 .nav-btn{
-  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:10px 4px 8px;background:none;border:none;
-  color:var(--muted);font-size:0.68rem;font-family:var(--font);font-weight:600;
-  cursor:pointer;transition:var(--transition);
-  position:relative;overflow:hidden
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;padding:8px 2px 6px;background:none;border:none;
+  color:var(--muted);font-size:0.6rem;font-family:var(--font);font-weight:600;
+  cursor:pointer;transition:color var(--transition);
+  position:relative;overflow:hidden;min-width:0
 }
-/* خط علوي Elzero style */
 .nav-btn::before{
   content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
   width:0;height:3px;background:var(--accent);
-  transition:var(--transition);border-radius:0 0 3px 3px
+  transition:width var(--transition);border-radius:0 0 4px 4px
 }
-.nav-btn.active::before{width:40px}
-.nav-btn.active{color:var(--accent2)}
-.nav-btn .nav-icon{font-size:1.3rem}
+.nav-btn.active::before{width:36px}
+.nav-btn.active{color:var(--accent)}
+.nav-btn .nav-icon{font-size:1.25rem;line-height:1;flex-shrink:0}
+.nav-btn span:not(.nav-icon){
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:100%;display:block
+}
 @media(min-width:768px){
-  .nav-btn{font-size:0.8rem;padding:12px 8px 10px}
-  .nav-btn .nav-icon{font-size:1.5rem}
+  .nav-btn{font-size:0.75rem;padding:12px 8px 10px}
+  .nav-btn .nav-icon{font-size:1.4rem}
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -251,20 +254,20 @@ p{font-size:1rem;line-height:1.7;color:var(--muted)}
 
 .kpi-card{
   background:var(--surf);border:1px solid var(--border);border-radius:var(--radius-lg);
-  padding:18px 16px;display:flex;flex-direction:column;gap:6px;
+  padding:18px 16px 16px;display:flex;flex-direction:column;gap:8px;
   position:relative;overflow:hidden;box-shadow:var(--shadow);
-  transition:transform var(--transition),box-shadow var(--transition)
+  transition:transform var(--transition),box-shadow var(--transition);
+  border-top:4px solid transparent
 }
-.kpi-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-hover)}
-.kpi-card::before{content:'';position:absolute;top:0;right:0;width:4px;height:100%}
-.kpi-green::before{background:var(--green)}
-.kpi-blue::before{background:var(--blue)}
-.kpi-amber::before{background:var(--amber)}
-.kpi-purple::before{background:var(--purple)}
-.kpi-icon{font-size:1.4rem}
-.kpi-value{font-size:1.05rem;font-weight:900;direction:ltr;unicode-bidi:isolate}
-.kpi-label{font-size:0.75rem;color:var(--muted);font-weight:600}
-@media(min-width:768px){.kpi-value{font-size:1.25rem}.kpi-label{font-size:0.82rem}}
+.kpi-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.kpi-green{border-top-color:var(--green)}
+.kpi-blue{border-top-color:var(--blue)}
+.kpi-amber{border-top-color:var(--amber)}
+.kpi-purple{border-top-color:var(--purple)}
+.kpi-icon{font-size:1.6rem;line-height:1}
+.kpi-value{font-size:1.15rem;font-weight:900;direction:ltr;unicode-bidi:isolate;line-height:1.2}
+.kpi-label{font-size:0.75rem;color:var(--muted);font-weight:600;margin-top:2px}
+@media(min-width:768px){.kpi-value{font-size:1.3rem}.kpi-label{font-size:0.82rem}}
 
 .progress-wrap{background:var(--surf2);border-radius:999px;height:8px;overflow:hidden;margin-bottom:16px;box-shadow:inset 0 1px 3px rgba(0,0,0,.2)}
 .progress-bar{height:100%;border-radius:999px;transition:width .8s cubic-bezier(.22,1,.36,1)}
@@ -413,14 +416,14 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .btn:hover{background-position:left bottom}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 
-.btn-primary  {color:var(--accent);border-color:var(--accent);background:linear-gradient(to left,var(--accent) 50%,transparent 50%) right;background-size:200% 100%}
-.btn-primary:hover,.btn-primary:active{background-position:left;color:#fff}
-.btn-success  {color:var(--green);border-color:var(--green);background:linear-gradient(to left,var(--green) 50%,transparent 50%) right;background-size:200% 100%}
-.btn-success:hover,.btn-success:active{background-position:left;color:#fff}
-.btn-danger   {color:var(--red);border-color:var(--red);background:linear-gradient(to left,var(--red) 50%,transparent 50%) right;background-size:200% 100%}
-.btn-danger:hover,.btn-danger:active{background-position:left;color:#fff}
-.btn-warning  {color:var(--amber);border-color:var(--amber);background:linear-gradient(to left,var(--amber) 50%,transparent 50%) right;background-size:200% 100%}
-.btn-warning:hover,.btn-warning:active{background-position:left;color:#fff}
+.btn-primary  {color:#fff;border-color:var(--accent);background:var(--accent)}
+.btn-primary:hover,.btn-primary:active{filter:brightness(1.1)}
+.btn-success  {color:#fff;border-color:var(--green);background:var(--green)}
+.btn-success:hover,.btn-success:active{filter:brightness(1.1)}
+.btn-danger   {color:#fff;border-color:var(--red);background:var(--red)}
+.btn-danger:hover,.btn-danger:active{filter:brightness(1.1)}
+.btn-warning  {color:#fff;border-color:var(--amber);background:var(--amber)}
+.btn-warning:hover,.btn-warning:active{filter:brightness(1.1)}
 .btn-secondary{color:var(--muted);border-color:var(--border);background:var(--surf2)}
 .btn-secondary:hover,.btn-secondary:active{background:var(--surf3,var(--border));color:var(--text)}
 .btn-whatsapp{color:#25d366;border-color:#25d366;background:var(--surf2)}
@@ -836,4 +839,17 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   padding: 9px 12px;
   font-size: .9rem;
   margin-bottom: 4px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   NAV — إخفاء النص في الشاشات الصغيرة
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media(max-width:374px){
+  .nav-btn span:not(.nav-icon){ display:none }
+  .nav-btn{ padding:10px 2px }
+}
+/* لما الـ header مضغوط — نصغّر الـ nav text */
+@media(max-width:420px){
+  .nav-btn{ font-size:0.55rem }
+  .nav-btn .nav-icon{ font-size:1.2rem }
 }
