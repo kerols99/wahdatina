@@ -165,3 +165,18 @@ function closeThemePanel(e) {
     document.getElementById(activeId)?.classList.add('active');
   });
 })();
+
+// ══════════════════════════════════════════
+// Nav Menu — hamburger drawer
+// ══════════════════════════════════════════
+function openNavMenu() {
+  document.getElementById('nav-menu')?.classList.add('open');
+  document.getElementById('nav-overlay').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeNavMenu() {
+  document.getElementById('nav-menu')?.classList.remove('open');
+  document.getElementById('nav-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
