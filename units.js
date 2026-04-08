@@ -343,7 +343,7 @@ async function openUnitDrawer(unitId) {
 
   <div class="drawer-actions">
     <button class="btn btn-primary"  onclick="openEditUnit('${unit.id}')">${t('btn_edit')}</button>
-    <button class="btn btn-success"  onclick="closeDrawer(); quickPayUnit('${unit.id}')">${t('btn_pay')}</button>
+    <button class="btn btn-success"  onclick="closeDrawer(); ${unit.tenant_name2 ? 'askWhoPayment(\'' + unit.id + '\')' : 'quickPayUnit(\'' + unit.id + '\')' }">${t('btn_pay')}</button>
     ${unit.phone  ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',1)">💬 ${unit.tenant_name  ? Helpers.escapeHtml(unit.tenant_name.split(' ')[0])  : t('btn_reminder')}</button>` : ''}
     ${unit.phone2 && unit.tenant_name2 ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',2)">💬 ${Helpers.escapeHtml(unit.tenant_name2.split(' ')[0])}</button>` : ''}
     ${!unit.is_vacant ? `<button class="btn btn-warning" onclick="openDepartureForm('${unit.id}')">${t('btn_departure')}</button>` : ''}
@@ -361,6 +361,10 @@ async function openUnitDrawer(unitId) {
 </div>`;
 
     openDrawer(content);
+    // تحميل صور الوحدة
+    if (window.renderUnitImages) {
+      renderUnitImages(unit.id, document.getElementById('unit-imgs-drawer-' + unit.id));
+    }
   } catch (err) {
     console.error('openUnitDrawer error:', err);
     openDrawer(`<div class="error-msg">❌ ${Helpers.escapeHtml(err.message)}</div>`);
@@ -485,6 +489,12 @@ function buildUnitForm(unit) {
     <label>${t('uf_notes')}</label>
     <textarea id="uf-notes" rows="2">${Helpers.escapeHtml(unit?.notes || '')}</textarea>
   </div>
+  <div class="form-group">
+    <label>📸 صور الوحدة</label>
+    <input type="file" id="unit-imgs-input" accept="image/*" multiple onchange="if(window.previewUnitImgs) previewUnitImgs(this)"
+      style="width:100%;padding:8px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:.8rem">
+    <div id="unit-imgs-preview" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div>
+  </div>
 
   <div class="form-actions">
     <button class="btn btn-primary" onclick="saveUnit('${isEdit ? unit.id : ''}')">
@@ -568,6 +578,10 @@ async function saveUnit(unitId = '') {
     const action = unitId ? 'edit_unit' : 'add_unit';
     logAction(action, 'units', unitId || null, { apartment: apt, room });
     toast(unitId ? t('toast_unit_saved') : t('toast_unit_added'), 'success');
+    // رفع الصور لو موجودة
+    if (window.uploadUnitImages && unitId) {
+      uploadUnitImages(unitId).catch(e => console.warn('img upload:', e));
+    }
     closeDrawer();
     loadUnits();
   } catch (err) {
@@ -694,7 +708,7 @@ function setUnitsSearch(q) {
 // ══════════════════════════
 // دفع سريع من الوحدة
 // ══════════════════════════
-function quickPayUnit(unitId) {
+function quickPayUnit(unitId, tenantNum = 1) {
   const unit = _allUnits.find(u => u.id === unitId);
   if (!unit) return;
 

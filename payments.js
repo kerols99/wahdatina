@@ -17,6 +17,15 @@ function switchPayTab(tab) {
 
   document.querySelector(`.pay-tab-btn[data-tab="${tab}"]`)?.classList.add('active');
   document.getElementById(`pay-section-${tab}`)?.classList.add('active');
+
+  // Bulk pay — load on switch
+  if (tab === 'bulk') {
+    const c = document.getElementById('bulk-pay-content');
+    if (c) { c.style.display = 'block'; loadBulkPay(); }
+  } else {
+    const c = document.getElementById('bulk-pay-content');
+    if (c) c.style.display = 'none';
+  }
 }
 
 // ══════════════════════════
@@ -828,3 +837,386 @@ async function saveEditExpense(expenseId) {
   } catch(e) { toast(`❌ ${e.message}`, 'error'); }
 }
 window.saveEditExpense = saveEditExpense;
+
+// ══════════════════════════════════════════
+// calcOwnerBalance — حساب رصيد المالك
+// ══════════════════════════════════════════
+async function calcOwnerBalance() {
+  const monEl = document.getElementById('own-month');
+  if (monEl && !monEl.value) {
+    const now = new Date();
+    monEl.value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  }
+  const mon = monEl ? monEl.value : '';
+  if (!mon) return;
+
+  const wrap    = document.getElementById('own-balance-wrap');
+  const display = document.getElementById('own-balance-display');
+  if (!wrap || !display) return;
+
+  display.textContent = '⏳ ...';
+  wrap.style.display = 'block';
+
+  try {
+    const monYM     = mon.slice(0,7);
+    const monStart  = monYM + '-01';
+    const monEnd    = Helpers.monthEnd(monStart);
+
+    const [pR, dR, eR, oR] = await Promise.all([
+      sb.from('rent_payments').select('amount').gte('payment_date', monStart).lte('payment_date', monEnd),
+      sb.from('deposits').select('amount,status,refund_amount').gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
+      sb.from('expenses').select('amount').eq('period_month', monStart),
+      sb.from('owner_payments').select('amount').eq('period_month', monStart),
+    ]);
+
+    const totalRent = (pR.data||[]).reduce((s,p) => s+parseFloat(p.amount||0), 0);
+    const totalDeps = (dR.data||[]).filter(d=>d.status!=='refunded').reduce((s,d) => s+parseFloat(d.amount||0), 0);
+    const totalExp  = (eR.data||[]).reduce((s,e) => s+parseFloat(e.amount||0), 0);
+    const totalOwn  = (oR.data||[]).reduce((s,o) => s+parseFloat(o.amount||0), 0);
+    const balance   = totalRent + totalDeps - totalExp - totalOwn;
+
+    wrap.innerHTML = `
+<div style="background:var(--surf2);border-radius:12px;padding:12px;margin-top:8px">
+  <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px;font-weight:700">💰 حساب شهر ${Helpers.fmtMonth(monStart)}</div>
+  <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:.78rem"><span style="color:var(--muted)">✅ إيجار محصّل</span><b style="color:var(--green)">${Helpers.formatAED(totalRent)}</b></div>
+  ${totalDeps>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:.78rem"><span style="color:var(--muted)">🔒 تأمينات</span><b style="color:var(--accent)">${Helpers.formatAED(totalDeps)}</b></div>`:''}
+  ${totalExp>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:.78rem"><span style="color:var(--muted)">💸 مصاريف</span><b style="color:var(--amber)">- ${Helpers.formatAED(totalExp)}</b></div>`:''}
+  ${totalOwn>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:.78rem"><span style="color:var(--muted)">👤 دُفع للمالك</span><b>- ${Helpers.formatAED(totalOwn)}</b></div>`:''}
+  <div style="display:flex;justify-content:space-between;padding:8px 0 4px;border-top:1px solid var(--border);margin-top:6px">
+    <b style="font-size:.85rem">🏦 المتبقي للمالك</b>
+    <b style="font-size:.95rem;color:${balance>=0?'var(--green)':'var(--red)'}">${Helpers.formatAED(balance)}</b>
+  </div>
+</div>`;
+  } catch(e) {
+    if(wrap) wrap.innerHTML = `<div class="error-msg">❌ ${e.message}</div>`;
+  }
+}
+window.calcOwnerBalance = calcOwnerBalance;
+
+// ══════════════════════════════════════════
+// askWhoPayment — اختيار المستأجر عند الدفع
+// للوحدات اللي فيها مستأجرين اتنين
+// ══════════════════════════════════════════
+function askWhoPayment(unitId) {
+  const unit = (window._allUnits || []).find(u => u.id === unitId);
+  if (!unit) return;
+  if (!unit.tenant_name2 || !unit.rent2) {
+    // مستأجر واحد — افتح الـ quick pay مباشرة
+    if (window.quickPayUnit) quickPayUnit(unitId);
+    return;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'who-pay-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+
+  const paidMap = {};
+  (window._currentMonthPayments || []).forEach(p => {
+    if (p.tenant_num === 2) paidMap['t2_'+p.unit_id] = (paidMap['t2_'+p.unit_id]||0) + parseFloat(p.amount||0);
+    else paidMap[p.unit_id] = (paidMap[p.unit_id]||0) + parseFloat(p.amount||0);
+  });
+
+  const paid1 = paidMap[unitId] || 0;
+  const paid2 = paidMap['t2_'+unitId] || 0;
+  const due1  = Math.max(0, parseFloat(unit.rent1||unit.monthly_rent||0) - paid1);
+  const due2  = Math.max(0, parseFloat(unit.rent2||0) - paid2);
+
+  const btnStyle = (due) => `width:100%;padding:16px;margin-bottom:10px;background:var(--surf2);border:2px solid ${due>0?'var(--accent)':'var(--green)'};border-radius:14px;color:var(--text);font-family:inherit;font-size:.95rem;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center`;
+
+  modal.innerHTML = `
+    <div style="background:var(--surf);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;max-width:520px">
+      <div style="font-weight:800;font-size:1rem;margin-bottom:16px">💰 ${t('pay_who') || 'مين بيدفع؟'}</div>
+      <button style="${btnStyle(due1)}" onclick="document.getElementById('who-pay-modal').remove(); quickPayUnit('${unitId}', 1)">
+        <span>👤 ${Helpers.escapeHtml(unit.tenant_name)}</span>
+        <span style="color:${due1>0?'var(--accent)':'var(--green)'}">
+          ${due1>0 ? Helpers.formatAED(due1)+' متبقي' : '✅ مدفوع'}
+        </span>
+      </button>
+      <button style="${btnStyle(due2)}" onclick="document.getElementById('who-pay-modal').remove(); quickPayUnit('${unitId}', 2)">
+        <span>👤 ${Helpers.escapeHtml(unit.tenant_name2)}</span>
+        <span style="color:${due2>0?'var(--accent)':'var(--green)'}">
+          ${due2>0 ? Helpers.formatAED(due2)+' متبقي' : '✅ مدفوع'}
+        </span>
+      </button>
+      <button onclick="document.getElementById('who-pay-modal').remove()"
+        style="width:100%;padding:12px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--muted);font-family:inherit;cursor:pointer">
+        ${t('btn_cancel')}
+      </button>
+    </div>`;
+
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+window.askWhoPayment = askWhoPayment;
+
+// ══════════════════════════════════════════
+// Bulk Pay — دفع جماعي
+// ══════════════════════════════════════════
+async function loadBulkPay() {
+  const c = document.getElementById('bulk-pay-content');
+  if (!c) return;
+  c.innerHTML = `<div class="loading">${t('loading')}</div>`;
+  try {
+    const monthFirst = Helpers.currentMonthFirst();
+    const [unitsRes, paysRes] = await Promise.all([
+      sb.from('units').select('id,apartment,room,tenant_name,monthly_rent,rent1,rent2,tenant_name2,is_vacant').eq('is_vacant',false).order('apartment').order('room'),
+      sb.from('rent_payments').select('unit_id,amount,tenant_num').eq('payment_month', monthFirst),
+    ]);
+
+    const units = unitsRes.data || [];
+    const pays  = paysRes.data  || [];
+
+    const paidMap = {}, paid2Map = {};
+    pays.forEach(p => {
+      if (p.tenant_num === 2) paid2Map[p.unit_id] = (paid2Map[p.unit_id]||0) + parseFloat(p.amount||0);
+      else paidMap[p.unit_id] = (paidMap[p.unit_id]||0) + parseFloat(p.amount||0);
+    });
+
+    // فلتر: غير مدفوعين فقط
+    const unpaid = units.filter(u => {
+      const due = parseFloat(u.monthly_rent||0) - (paidMap[u.id]||0);
+      return due > 0;
+    });
+
+    if (!unpaid.length) {
+      c.innerHTML = `<div class="empty-msg">✅ ${t('all_paid') || 'كل الوحدات دفعت هذا الشهر'}</div>`;
+      return;
+    }
+
+    const today = Helpers.today();
+    c.innerHTML = `
+<div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">${unpaid.length} وحدة غير مدفوعة — ${Helpers.fmtMonth(monthFirst)}</div>
+${unpaid.map(u => {
+  const due = parseFloat(u.monthly_rent||0) - (paidMap[u.id]||0);
+  return `
+<div style="background:var(--surf2);border-radius:12px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+  <div style="flex:1;min-width:0">
+    <div style="font-weight:700;font-size:.85rem">${t('apt_label')} ${Helpers.escapeHtml(u.apartment)} — ${t('room_label')} ${Helpers.escapeHtml(u.room)}</div>
+    <div style="font-size:.72rem;color:var(--muted)">${Helpers.escapeHtml(u.tenant_name||'—')}</div>
+    <div style="font-size:.72rem;color:var(--red);font-weight:700">${t('kpi_remaining')}: ${Helpers.formatAED(due)}</div>
+  </div>
+  <button onclick="bulkSavePay('${u.id}','${u.apartment}','${u.room}','${monthFirst}','${today}',this)"
+    style="background:var(--green)22;border:1px solid var(--green)44;border-radius:8px;padding:8px 14px;color:var(--green);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
+    💰 ${Helpers.formatAED(due)}
+  </button>
+</div>`;
+}).join('')}`;
+  } catch(e) {
+    c.innerHTML = `<div class="error-msg">❌ ${e.message}</div>`;
+  }
+}
+window.loadBulkPay = loadBulkPay;
+
+async function bulkSavePay(unitId, apt, room, month, date, btn) {
+  if (!requireRole('add_payment')) return;
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const { data: unit } = await sb.from('units').select('tenant_name,monthly_rent').eq('id', unitId).maybeSingle();
+    const { data: pays } = await sb.from('rent_payments').select('amount').eq('unit_id', unitId).eq('payment_month', month);
+    const paid = (pays||[]).reduce((s,p)=>s+parseFloat(p.amount||0),0);
+    const due  = parseFloat(unit?.monthly_rent||0) - paid;
+    if (due <= 0) { btn.textContent = '✅'; return; }
+
+    const { error } = await sb.from('rent_payments').insert({
+      unit_id: unitId, apartment: String(apt), room: String(room),
+      tenant_name: unit?.tenant_name || null,
+      amount: due, payment_month: month,
+      payment_date: date, payment_method: 'Cash',
+      created_by: ME?.id || null,
+    });
+    if (error) throw error;
+
+    btn.textContent = '✅';
+    btn.style.background = 'var(--green)44';
+    btn.style.color = 'var(--green)';
+    btn.disabled = true;
+    toast(`✅ ${unit?.tenant_name || apt+'/'+room}`, 'success');
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '❌';
+    toast(e.message, 'error');
+  }
+}
+window.bulkSavePay = bulkSavePay;
+
+// ══════════════════════════════════════════
+// openReceiptSearch — بحث في الإيصالات
+// ══════════════════════════════════════════
+async function openReceiptSearch() {
+  const existing = document.getElementById('rcpt-modal');
+  if (existing) { existing.remove(); return; }
+
+  const modal = document.createElement('div');
+  modal.id = 'rcpt-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+
+  modal.innerHTML = `
+    <div style="background:var(--surf);border-radius:20px 20px 0 0;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;padding:0 0 32px">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--surf)">
+        <div style="font-size:.95rem;font-weight:700">🔍 ${t('receipt_search')||'بحث في الإيصالات'}</div>
+        <button onclick="document.getElementById('rcpt-modal').remove()"
+          style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:12px 16px">
+        <input id="rcpt-search" type="text" placeholder="${t('search_placeholder')||'ابحث باسم أو شقة أو شهر...'}"
+          style="width:100%;padding:10px 14px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:.85rem"
+          oninput="filterReceipts()">
+      </div>
+      <div id="rcpt-list" style="padding:0 16px">
+        <div class="loading">${t('loading')}</div>
+      </div>
+    </div>`;
+
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+
+  // جيب الإيصالات
+  try {
+    const { data } = await sb.from('receipts')
+      .select('*').order('created_at', {ascending: false}).limit(200);
+    window._allReceipts = data || [];
+    filterReceipts();
+  } catch(e) {
+    document.getElementById('rcpt-list').innerHTML = `<div class="error-msg">❌ ${e.message}</div>`;
+  }
+}
+window.openReceiptSearch = openReceiptSearch;
+
+function filterReceipts() {
+  const q    = (document.getElementById('rcpt-search')?.value || '').toLowerCase();
+  const list = document.getElementById('rcpt-list');
+  if (!list) return;
+
+  const items = (window._allReceipts || []).filter(r =>
+    !q ||
+    (r.tenant_name||'').toLowerCase().includes(q) ||
+    String(r.apartment||'').includes(q) ||
+    String(r.room||'').includes(q) ||
+    (r.payment_month||'').includes(q) ||
+    (r.receipt_no||'').toLowerCase().includes(q)
+  );
+
+  if (!items.length) {
+    list.innerHTML = `<div class="empty-msg">${t('no_receipts')||'لا توجد إيصالات'}</div>`;
+    return;
+  }
+
+  list.innerHTML = items.map(r => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)22;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.75rem;font-weight:700;color:var(--accent);font-family:monospace">${r.receipt_no||'—'}</div>
+        <div style="font-size:.75rem;color:var(--text);margin-top:2px">
+          ${t('apt_label')} ${Helpers.escapeHtml(r.apartment||'')} — ${t('room_label')} ${Helpers.escapeHtml(r.room||'')}
+          ${r.tenant_name ? ' · ' + Helpers.escapeHtml(r.tenant_name) : ''}
+        </div>
+        <div style="font-size:.68rem;color:var(--muted)">${r.payment_month||''} · ${r.payment_date||''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <b style="color:var(--green)">${Helpers.formatAED(r.amount)}</b>
+        ${r.payment_id ? `<button onclick="printReceipt('${r.payment_id}')"
+          style="background:var(--accent)22;border:1px solid var(--accent)44;border-radius:6px;padding:2px 8px;color:var(--accent);font-size:.68rem;cursor:pointer;font-family:inherit">🖨️</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+window.filterReceipts = filterReceipts;
+
+// ══════════════════════════════════════════
+// printOwnerSettlement — كشف حساب المالك PDF
+// ══════════════════════════════════════════
+async function printOwnerSettlement() {
+  const monEl = document.getElementById('own-month');
+  const mon   = monEl ? monEl.value : '';
+  if (!mon) { toast(t('toast_month_req'), 'error'); return; }
+
+  const monYM    = mon.slice(0,7);
+  const monStart = monYM + '-01';
+  const monEnd   = Helpers.monthEnd(monStart);
+  const monthLabel = Helpers.fmtMonth(monStart);
+
+  try {
+    const [pR, dR, eR, oR, rR] = await Promise.all([
+      sb.from('rent_payments').select('apartment,room,amount,payment_date,payment_method').gte('payment_date', monStart).lte('payment_date', monEnd),
+      sb.from('deposits').select('apartment,room,amount,deposit_received_date,tenant_name,status').gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
+      sb.from('expenses').select('category,amount,description').eq('period_month', monStart),
+      sb.from('owner_payments').select('amount,method,reference,notes').eq('period_month', monStart),
+      sb.from('deposits').select('apartment,room,refund_amount,refund_date,tenant_name').gt('refund_amount', 0).gte('refund_date', monStart).lte('refund_date', monEnd),
+    ]);
+
+    const pays    = pR.data || [];
+    const deps    = dR.data || [];
+    const exps    = eR.data || [];
+    const owns    = oR.data || [];
+    const refunds = rR.data || [];
+
+    const totalRent    = pays.reduce((s,p) => s+parseFloat(p.amount||0), 0);
+    const totalDeps    = deps.filter(d=>d.status!=='refunded').reduce((s,d) => s+parseFloat(d.amount||0), 0);
+    const totalRefunds = refunds.reduce((s,r) => s+parseFloat(r.refund_amount||0), 0);
+    const totalExp     = exps.reduce((s,e) => s+parseFloat(e.amount||0), 0);
+    const totalOwn     = owns.reduce((s,o) => s+parseFloat(o.amount||0), 0);
+    const balance      = totalRent + totalDeps - totalRefunds - totalExp - totalOwn;
+
+    const TH = t => `<th style="padding:6px 8px;background:#f0f0f0;border:1px solid #ccc;font-size:11px;text-align:right">${t}</th>`;
+    const TD = (t,s='') => `<td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;text-align:right${s?';'+s:''}">${t||'—'}</td>`;
+    const ROW = (l,v,c='') => `<tr><td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555">${l}</td><td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;font-weight:700;text-align:left${c?';color:'+c:''}">${v}</td></tr>`;
+
+    const pdfHtml = `
+<div style="font-family:Arial,sans-serif;direction:rtl;color:#111;max-width:700px;margin:0 auto">
+  <div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-size:1.2rem;font-weight:800;color:#1a3a6a">كشف حساب المالك</div>
+      <div style="font-size:.85rem;color:#555;margin-top:3px">${monthLabel}</div>
+    </div>
+    <div style="font-size:.75rem;color:#888">${new Date().toLocaleDateString('ar-EG')}</div>
+  </div>
+
+  ${pays.length ? `
+  <div style="font-weight:700;font-size:.9rem;margin-bottom:8px;color:#1a3a6a">💰 الإيجارات المحصّلة (${pays.length})</div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead><tr>${TH('شقة')}${TH('غرفة')}${TH('المبلغ')}${TH('التاريخ')}${TH('الطريقة')}</tr></thead>
+    <tbody>${pays.map(p=>`<tr>${TD(p.apartment)}${TD(p.room)}${TD(Helpers.formatAED(p.amount),'color:#1a7a4a;font-weight:700')}${TD(p.payment_date||'')}${TD(p.payment_method||'')}</tr>`).join('')}</tbody>
+  </table>` : ''}
+
+  ${deps.length ? `
+  <div style="font-weight:700;font-size:.9rem;margin-bottom:8px;color:#1a3a6a">🔒 تأمينات مستلمة (${deps.length})</div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead><tr>${TH('شقة')}${TH('غرفة')}${TH('المستأجر')}${TH('المبلغ')}${TH('التاريخ')}</tr></thead>
+    <tbody>${deps.map(d=>`<tr>${TD(d.apartment)}${TD(d.room)}${TD(d.tenant_name||'')}${TD(Helpers.formatAED(d.amount),'color:#2456d3;font-weight:700')}${TD(d.deposit_received_date||'')}</tr>`).join('')}</tbody>
+  </table>` : ''}
+
+  ${exps.length ? `
+  <div style="font-weight:700;font-size:.9rem;margin-bottom:8px;color:#1a3a6a">💸 المصاريف (${exps.length})</div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead><tr>${TH('الفئة')}${TH('المبلغ')}${TH('الوصف')}</tr></thead>
+    <tbody>${exps.map(e=>`<tr>${TD(e.category||'')}${TD(Helpers.formatAED(e.amount),'color:#b07400;font-weight:700')}${TD(e.description||'')}</tr>`).join('')}</tbody>
+  </table>` : ''}
+
+  <div style="border-top:2px solid #333;padding-top:14px;margin-top:4px">
+    <div style="font-weight:700;font-size:.9rem;margin-bottom:10px;color:#1a3a6a">📊 الملخص</div>
+    <table style="width:100%;border-collapse:collapse">
+      <tbody>
+        ${ROW('✅ إجمالي الإيجار', Helpers.formatAED(totalRent), '#1a7a4a')}
+        ${totalDeps>0?ROW('🔒 إجمالي التأمينات', Helpers.formatAED(totalDeps), '#2456d3'):''}
+        ${totalRefunds>0?ROW('↩️ تأمينات مرتجعة', '- '+Helpers.formatAED(totalRefunds), '#c0392b'):''}
+        ${totalExp>0?ROW('💸 إجمالي المصاريف', '- '+Helpers.formatAED(totalExp), '#b07400'):''}
+        ${totalOwn>0?ROW('👤 دُفع للمالك مسبقاً', '- '+Helpers.formatAED(totalOwn), '#555'):''}
+        <tr style="background:${balance>=0?'#1a7a4a':'#c0392b'}">
+          <td style="padding:10px;font-size:13px;font-weight:800;color:#fff">🏦 المتبقي للمالك</td>
+          <td style="padding:10px;font-size:15px;font-weight:800;color:#fff;text-align:left">${Helpers.formatAED(balance)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>`;
+
+    const overlay = document.getElementById('pdfOverlay');
+    const content = document.getElementById('pdf-content');
+    if (overlay && content) {
+      content.innerHTML = pdfHtml;
+      overlay.style.display = 'flex';
+    }
+  } catch(e) {
+    toast(`❌ ${e.message}`, 'error');
+  }
+}
+window.printOwnerSettlement = printOwnerSettlement;

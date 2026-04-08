@@ -97,6 +97,7 @@
     <div id="panel-pay" class="panel">
       <div class="pay-tabs">
         <button class="pay-tab-btn active" data-tab="rent"    onclick="switchPayTab('rent')"    data-i18n="tab_rent">💰 إيجار</button>
+        <button class="pay-tab-btn"        data-tab="bulk"    onclick="switchPayTab('bulk')"   >💰 جماعي</button>
         <button class="pay-tab-btn"        data-tab="expense" onclick="switchPayTab('expense')" data-i18n="tab_expense">💸 مصروف</button>
         <button class="pay-tab-btn"        data-tab="owner"   onclick="switchPayTab('owner')"   data-i18n="tab_owner">👤 مالك</button>
         <button class="pay-tab-btn"        data-tab="deposit" onclick="switchPayTab('deposit')" data-i18n="tab_deposit">🔐 تأمين</button>
@@ -206,7 +207,8 @@
           </div>
           <div class="form-group">
             <label data-i18n="own_month">الشهر *</label>
-            <input type="month" id="own-month">
+            <input type="month" id="own-month" onchange="calcOwnerBalance()">
+          <div id="own-balance-wrap" style="display:none;margin-top:6px"></div>
           </div>
         </div>
         <div class="form-row">
@@ -235,6 +237,7 @@
                     data-i18n="uf_optional" data-i18n-attr="placeholder"
                     placeholder="اختياري"></textarea>
         </div>
+        <button class="btn btn-secondary btn-full" onclick="printOwnerSettlement()" style="margin-bottom:8px">🖨️ كشف حساب المالك PDF</button>
         <button class="btn btn-primary btn-full" onclick="saveOwnerPayment()" data-i18n="own_btn">
           👤 تسجيل دفعة المالك
         </button>
@@ -445,5 +448,27 @@
 </div>
 
   <script src="profiles.js"></script>
+  <script src="images.js"></script>
+<style>
+#receipt-search-fab {
+  position: fixed;
+  bottom: 80px;
+  left: 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>
+<button id="receipt-search-fab" onclick="if(window.openReceiptSearch) openReceiptSearch()" title="بحث في الإيصالات">🔍</button>
 </body>
 </html>

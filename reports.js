@@ -43,6 +43,7 @@ function loadReports() {
   <button class="pay-tab-btn" data-tab="deposits" onclick="switchReportsTab('deposits')">${t('reports_deposits')}</button>
   <button class="pay-tab-btn" data-tab="annual"   onclick="switchReportsTab('annual')">${t('reports_annual')}</button>
   <button class="pay-tab-btn" data-tab="owner"    onclick="switchReportsTab('owner')">${t('reports_owner') || 'المالك'}</button>
+  <button class="pay-tab-btn" data-tab="stats"    onclick="switchReportsTab('stats')">📊 ${t('stats_lbl')||'إحصائيات'}</button>
 </div>
 <div id="reports-tab-content"></div>`;
   switchReportsTab('monthly');
@@ -61,6 +62,7 @@ function switchReportsTab(tab) {
   else if (tab === 'deposits') loadDepRpt();
   else if (tab === 'annual')   loadAnnual();
   else if (tab === 'owner')    loadOwnerRpt();
+  else if (tab === 'stats')    loadStats();
 }
 
 // ══════════════════════════════════════════
@@ -464,9 +466,12 @@ async function loadAnnual() {
     const year = new Date().getFullYear();
     c.innerHTML = `
 <div class="report-controls">
+  <div style="display:flex;gap:8px;align-items:center">
   <select id="ann-year" onchange="loadAnnual()">
     ${[year, year-1, year-2].map(y => `<option value="${y}" ${y===year?'selected':''}>${y}</option>`).join('')}
   </select>
+</div></div>
+  <button class="btn btn-secondary" onclick="exportAnnualCSV()" style="white-space:nowrap">📥 CSV</button>
 </div>
 <div id="rpt-annual-body"><div class="loading">${t('loading')}</div></div>`;
     await _renderAnnual();
@@ -989,3 +994,176 @@ async function deleteOwnerPayment(id) {
   }
 }
 
+
+// ══════════════════════════════════════════
+// loadStats — إحصائيات عامة
+// ══════════════════════════════════════════
+async function loadStats() {
+  const c = document.getElementById('reports-tab-content');
+  if (!c) return;
+  c.innerHTML = `<div class="loading">${t('loading')}</div>`;
+  try {
+    const [unitsRes, paysRes, expsRes] = await Promise.all([
+      sb.from('units').select('id,apartment,monthly_rent,is_vacant,unit_status'),
+      sb.from('rent_payments').select('amount,payment_date,payment_month').order('payment_date'),
+      sb.from('expenses').select('amount,period_month'),
+    ]);
+
+    const units = unitsRes.data || [];
+    const pays  = paysRes.data  || [];
+    const exps  = expsRes.data  || [];
+
+    const total    = units.length;
+    const occupied = units.filter(u => !u.is_vacant && u.unit_status === 'occupied').length;
+    const vacant   = units.filter(u => u.is_vacant).length;
+    const reserved = units.filter(u => u.unit_status === 'reserved').length;
+    const occRate  = total > 0 ? Math.round(occupied/total*100) : 0;
+    const occUnits = units.filter(u => !u.is_vacant);
+    const avgRent  = occUnits.length > 0
+      ? Math.round(occUnits.reduce((s,u) => s+parseFloat(u.monthly_rent||0), 0) / occUnits.length)
+      : 0;
+    const totalTarget = occUnits.reduce((s,u) => s+parseFloat(u.monthly_rent||0), 0);
+
+    // آخر 6 شهور
+    const monthMap = {}, expMap = {};
+    pays.forEach(p => {
+      const m = String(p.payment_date||'').slice(0,7);
+      if (m) monthMap[m] = (monthMap[m]||0) + parseFloat(p.amount||0);
+    });
+    exps.forEach(e => {
+      const m = String(e.period_month||'').slice(0,7);
+      if (m) expMap[m] = (expMap[m]||0) + parseFloat(e.amount||0);
+    });
+    const months = Object.keys(monthMap).sort().slice(-6);
+    const maxVal = Math.max(...months.map(m => monthMap[m]||0), 1);
+
+    // أفضل شقة
+    const aptMap = {};
+    units.forEach(u => {
+      const apt = String(u.apartment);
+      if (!aptMap[apt]) aptMap[apt] = { rent:0, count:0 };
+      if (!u.is_vacant) { aptMap[apt].rent += parseFloat(u.monthly_rent||0); aptMap[apt].count++; }
+    });
+    const bestApt = Object.entries(aptMap).sort((a,b)=>b[1].rent-a[1].rent)[0];
+
+    const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    c.innerHTML = `
+<div class="rpt-kpi-bar" style="margin-bottom:16px">
+  <div class="rpt-kpi"><span class="rpt-kpi-val green">${occupied}</span><span class="rpt-kpi-lbl">${t('stat_occupied')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val amber">${vacant}</span><span class="rpt-kpi-lbl">${t('stat_vacant')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val blue">${reserved}</span><span class="rpt-kpi-lbl">${t('stat_reserved')}</span></div>
+  <div class="rpt-kpi"><span class="rpt-kpi-val">${occRate}%</span><span class="rpt-kpi-lbl">${t('occ_rate')||'نسبة الإشغال'}</span></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+  <div style="background:var(--surf2);border-radius:12px;padding:14px;text-align:center">
+    <div style="font-size:1.2rem;font-weight:800;color:var(--accent)">${Helpers.formatAED(avgRent)}</div>
+    <div style="font-size:.65rem;color:var(--muted);margin-top:3px">${t('avg_rent')||'متوسط الإيجار'}</div>
+  </div>
+  <div style="background:var(--surf2);border-radius:12px;padding:14px;text-align:center">
+    <div style="font-size:1.2rem;font-weight:800;color:var(--green)">${Helpers.formatAED(totalTarget)}</div>
+    <div style="font-size:.65rem;color:var(--muted);margin-top:3px">${t('kpi_target')||'المستهدف الشهري'}</div>
+  </div>
+</div>
+
+${bestApt ? `
+<div style="background:var(--accent)18;border:1px solid var(--accent)33;border-radius:12px;padding:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+  <div>
+    <div style="font-size:.72rem;color:var(--muted)">🏆 ${t('best_apt')||'أفضل شقة تحصيلاً'}</div>
+    <div style="font-weight:800;font-size:1rem;margin-top:2px">${t('apt_label')} ${bestApt[0]}</div>
+  </div>
+  <div style="text-align:end">
+    <div style="font-weight:700;color:var(--green)">${Helpers.formatAED(bestApt[1].rent)}</div>
+    <div style="font-size:.68rem;color:var(--muted)">${bestApt[1].count} وحدة</div>
+  </div>
+</div>` : ''}
+
+<div style="background:var(--surf2);border-radius:12px;padding:14px;margin-bottom:8px">
+  <div style="font-size:.72rem;color:var(--muted);font-weight:700;margin-bottom:10px">📈 ${t('cash_trend')||'تحصيل آخر 6 شهور'}</div>
+  ${months.map(m => {
+    const val  = monthMap[m] || 0;
+    const exp  = expMap[m]   || 0;
+    const net  = val - exp;
+    const barW = Math.round(val/maxVal*100);
+    const mi   = parseInt(m.split('-')[1]) - 1;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+      <div style="font-size:.65rem;color:var(--muted);width:32px;text-align:end">${monthNames[mi]}</div>
+      <div style="flex:1;background:var(--surf);border-radius:3px;height:16px;overflow:hidden">
+        <div style="height:100%;background:${net>=0?'var(--green)':'var(--red)'};width:${barW}%;border-radius:3px;transition:width .3s"></div>
+      </div>
+      <div style="font-size:.65rem;color:var(--muted);width:60px;text-align:end">${Helpers.formatAED(val)}</div>
+    </div>`;
+  }).join('')}
+</div>`;
+
+  } catch(err) {
+    c.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+  }
+}
+window.loadStats = loadStats;
+
+// ══════════════════════════════════════════
+// exportAnnualCSV — تصدير CSV سنوي
+// ══════════════════════════════════════════
+async function exportAnnualCSV() {
+  const yearEl = document.getElementById('ann-year');
+  const year   = yearEl ? parseInt(yearEl.value) : new Date().getFullYear();
+
+  try {
+    const [pR, eR, oR, dR] = await Promise.all([
+      sb.from('rent_payments').select('amount,payment_month').gte('payment_month', year+'-01-01').lte('payment_month', year+'-12-31'),
+      sb.from('expenses').select('amount,period_month').gte('period_month', year+'-01-01').lte('period_month', year+'-12-31'),
+      sb.from('owner_payments').select('amount,period_month').gte('period_month', year+'-01-01').lte('period_month', year+'-12-31'),
+      sb.from('deposits').select('amount,deposit_received_date,status'),
+    ]);
+
+    const pays = pR.data || [];
+    const exps = eR.data || [];
+    const owns = oR.data || [];
+    const deps = dR.data || [];
+
+    const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    const rows = Array.from({length:12}, (_,i) => {
+      const m   = String(i+1).padStart(2,'0');
+      const pfx = year + '-' + m;
+      const rent = pays.filter(p => String(p.payment_month||'').startsWith(pfx)).reduce((s,p) => s+parseFloat(p.amount||0), 0);
+      const dep  = deps.filter(d => String(d.deposit_received_date||'').slice(0,7)===pfx && d.status!=='refunded').reduce((s,d) => s+parseFloat(d.amount||0), 0);
+      const exp  = exps.filter(e => String(e.period_month||'').startsWith(pfx)).reduce((s,e) => s+parseFloat(e.amount||0), 0);
+      const own  = owns.filter(o => String(o.period_month||'').startsWith(pfx)).reduce((s,o) => s+parseFloat(o.amount||0), 0);
+      const net  = rent + dep - exp - own;
+      return [monthNames[i], rent, dep, exp, own, net];
+    });
+
+    const tRent = rows.reduce((s,r)=>s+r[1],0);
+    const tDep  = rows.reduce((s,r)=>s+r[2],0);
+    const tExp  = rows.reduce((s,r)=>s+r[3],0);
+    const tOwn  = rows.reduce((s,r)=>s+r[4],0);
+    const tNet  = tRent + tDep - tExp - tOwn;
+
+    // Build CSV
+    const headers = ['الشهر','إيجار','تأمين','مصاريف','للمالك','صافي'];
+    const csv = [
+      `واحدتنا — تقرير سنوي ${year}`,
+      '',
+      headers.join(','),
+      ...rows.map(r => r.join(',')),
+      '',
+      `الإجمالي,${tRent},${tDep},${tExp},${tOwn},${tNet}`,
+    ].join('\n');
+
+    // Download
+    const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `wahdatina-${year}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(t('toast_csv_exported') || '✅ تم تصدير CSV', 'success');
+  } catch(e) {
+    toast(`❌ ${e.message}`, 'error');
+  }
+}
+window.exportAnnualCSV = exportAnnualCSV;
