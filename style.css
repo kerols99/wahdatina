@@ -898,3 +898,13 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   border-radius: 20px;
   box-shadow: 0 4px 20px rgba(99,102,241,0.4);
 }
+
+/* PDF Overlay */
+#pdfOverlay { position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:800; flex-direction:column; }
+#pdfOverlay.open { display:flex !important; }
+@media print {
+  body > *:not(#pdfOverlay) { display:none !important; }
+  #pdfOverlay { display:block !important; position:static !important; background:#fff !important; }
+  #pdfOverlay > div:first-child { display:none !important; }
+  #pdf-content { padding:0 !important; }
+}

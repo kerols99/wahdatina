@@ -104,7 +104,10 @@ async function loadDepartures() {
   const c = document.getElementById('moves-tab-content');
   try {
     const [movesRes, unitsRes] = await Promise.all([
-      sb.from('moves').select('*').eq('type','depart').eq('status','pending').order('move_date'),
+      sb.from('moves').select('*').eq('type','depart').eq('status','pending')
+        .gte('move_date', Helpers.currentMonthFirst())
+        .lte('move_date', Helpers.nextMonthEnd())
+        .order('move_date'),
       sb.from('units').select('id,is_vacant,unit_status'),
     ]);
     if (movesRes.error) throw movesRes.error;
@@ -294,7 +297,10 @@ async function loadArrivals() {
   const c = document.getElementById('moves-tab-content');
   try {
     const [movesRes, unitsRes] = await Promise.all([
-      sb.from('moves').select('*').eq('type','arrive').eq('status','pending').order('new_start_date'),
+      sb.from('moves').select('*').eq('type','arrive').eq('status','pending')
+        .gte('new_start_date', Helpers.currentMonthFirst())
+        .lte('new_start_date', Helpers.nextMonthEnd())
+        .order('new_start_date'),
       sb.from('units').select('id,is_vacant,unit_status'),
     ]);
     if (movesRes.error) throw movesRes.error;
@@ -630,6 +636,10 @@ async function revertTransfer(trId) {
   try {
     const { data: tr } = await sb.from('internal_transfers').select('*').eq('id', trId).maybeSingle();
     if (!tr || !tr.from_snapshot || !tr.to_snapshot) return;
+
+    // حفظ الحالة الحالية قبل التراجع
+    await archiveUnitToHistory(tr.from_unit_id, Helpers.today(), 'manual');
+    await archiveUnitToHistory(tr.to_unit_id, Helpers.today(), 'manual');
 
     // ارجع الـ snapshots لأماكنها
     if (tr.from_unit_id) {

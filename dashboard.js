@@ -359,9 +359,19 @@ async function loadLatePayers(monthFirst, units, paidThisMonth) {
 // sendSingleReminder
 // ─────────────────────────────────────────
 function sendSingleReminder(unitId, phone, name, due, lang) {
-  const unit = { tenant_name: name, apartment: '', room: '' };
-  const msg  = Helpers.rentReminderMsg(unit, window._currentMonth || Helpers.currentMonthFirst(), due, lang);
-  Helpers.openWhatsApp(phone, msg);
+  // جيب بيانات الوحدة الكاملة للـ modal
+  const unit = (window._lateUnitsDetails || []).find(u => u.id === unitId) || { tenant_name: name, apartment: '', room: '' };
+  const msg  = Helpers.rentReminderMsg(
+    { tenant_name: name, apartment: unit.apartment || '', room: unit.room || '' },
+    window._currentMonth || Helpers.currentMonthFirst(),
+    due, lang
+  );
+  // استخدام نفس modal واحدتي
+  if (window.showWAModal) {
+    showWAModal(phone, name, msg, (lang || 'AR').toUpperCase());
+  } else {
+    Helpers.openWhatsApp(phone, msg);
+  }
 }
 
 // ─────────────────────────────────────────

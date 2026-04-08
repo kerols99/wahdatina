@@ -253,21 +253,32 @@ async function openUnitDrawer(unitId) {
 
     const paymentsHtml = payments.length > 0
       ? payments.map(p => `
-          <div class="history-row">
-            <span>${Helpers.fmtDate(p.payment_date)}</span>
-            <span class="muted">${Helpers.fmtMonth(p.payment_month)}</span>
-            <span class="green">${Helpers.formatAED(p.amount)}</span>
-            <span class="muted">${p.payment_method}</span>
+          <div class="history-row" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+            <div style="flex:1;font-size:.78rem">
+              <span>${Helpers.fmtDate(p.payment_date)}</span>
+              <span class="muted"> · ${Helpers.fmtMonth(p.payment_month)}</span>
+              <b class="green"> ${Helpers.formatAED(p.amount)}</b>
+              <span class="muted"> · ${p.payment_method}</span>
+            </div>
+            <button onclick="editPayment('${p.id}')" style="background:var(--accent)22;border:1px solid var(--accent)44;border-radius:6px;padding:2px 7px;color:var(--accent);font-size:.7rem;cursor:pointer;font-family:inherit;margin-left:4px">✏️</button>
+            <button onclick="deletePayment('${p.id}')" style="background:var(--red)22;border:1px solid var(--red)44;border-radius:6px;padding:2px 7px;color:var(--red);font-size:.7rem;cursor:pointer;font-family:inherit">🗑️</button>
           </div>`).join('')
       : `<div class="muted small">${t('no_payments')}</div>`;
 
     const depositHtml = deposit
-      ? `<div class="deposit-row">
-           <span>${t('drawer_deposit')}: ${Helpers.formatAED(deposit.amount)}</span>
-           <span class="badge badge-${deposit.status === 'held' ? 'amber' : deposit.status === 'refunded' ? 'green' : 'red'}">
-             ${deposit.status === 'held' ? t('deposit_held') : deposit.status === 'refunded' ? t('deposit_refunded') : t('deposit_forfeited')}
-           </span>
-           ${deposit.refund_amount > 0 ? `<span class="muted small">${t('refunded_prefix')}: ${Helpers.formatAED(deposit.refund_amount)}</span>` : ''}
+      ? `<div class="deposit-row" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+           <div style="flex:1">
+             <b>${Helpers.formatAED(deposit.amount)}</b>
+             <span class="badge badge-${deposit.status === 'held' ? 'amber' : deposit.status === 'refunded' ? 'green' : 'red'}" style="margin-right:6px">
+               ${deposit.status === 'held' ? t('deposit_held') : deposit.status === 'refunded' ? t('deposit_refunded') : t('deposit_forfeited')}
+             </span>
+             ${deposit.refund_amount > 0 ? '<div class="muted small">↩ ' + Helpers.formatAED(deposit.refund_amount) + '</div>' : ''}
+           </div>
+           <div style="display:flex;gap:4px">
+             ${deposit.status === 'held' ? '<button onclick="openRefundDeposit(\'' + deposit.id + '\')" style="background:var(--green)22;border:1px solid var(--green)44;border-radius:6px;padding:2px 7px;color:var(--green);font-size:.7rem;cursor:pointer;font-family:inherit">↩️</button>' : ''}
+             <button onclick="editDeposit(\'${deposit.id}\')" style="background:var(--accent)22;border:1px solid var(--accent)44;border-radius:6px;padding:2px 7px;color:var(--accent);font-size:.7rem;cursor:pointer;font-family:inherit">✏️</button>
+             <button onclick="deleteDeposit(\'${deposit.id}\')" style="background:var(--red)22;border:1px solid var(--red)44;border-radius:6px;padding:2px 7px;color:var(--red);font-size:.7rem;cursor:pointer;font-family:inherit">🗑️</button>
+           </div>
          </div>`
       : `<div class="muted small">${t('no_deposit')}</div>`;
 
@@ -336,6 +347,16 @@ async function openUnitDrawer(unitId) {
     ${unit.phone  ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',1)">💬 ${unit.tenant_name  ? Helpers.escapeHtml(unit.tenant_name.split(' ')[0])  : t('btn_reminder')}</button>` : ''}
     ${unit.phone2 && unit.tenant_name2 ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',2)">💬 ${Helpers.escapeHtml(unit.tenant_name2.split(' ')[0])}</button>` : ''}
     ${!unit.is_vacant ? `<button class="btn btn-warning" onclick="openDepartureForm('${unit.id}')">${t('btn_departure')}</button>` : ''}
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+    <button class="btn" style="background:var(--accent)18;border:1px solid var(--accent)44;color:var(--accent);width:100%"
+      onclick="if(window.openTenantProfile) openTenantProfile('${unit.id}')">
+      👤 بروفايل المستأجر
+    </button>
+    <button class="btn" style="background:#a855f722;border:1px solid #a855f744;color:#a855f7;width:100%"
+      onclick="if(window.openUnitTimeline) openUnitTimeline('${unit.id}', 'شقة ${unit.apartment} — ${unit.room}')">
+      📅 تاريخ الوحدة الكامل
+    </button>
   </div>
 </div>`;
 
@@ -529,7 +550,14 @@ async function saveUnit(unitId = '') {
   try {
     let error;
     if (unitId) {
-      // تعديل
+      // تعديل — لو في مستأجر جديد مختلف: archive القديم أولاً
+      if (tenant) {
+        const { data: oldUnit } = await sb.from('units').select('tenant_name').eq('id', unitId).maybeSingle();
+        if (oldUnit?.tenant_name && oldUnit.tenant_name !== tenant) {
+          // مستأجر تغيّر — حفظ القديم في التاريخ
+          await archiveUnitToHistory(unitId, start || Helpers.today(), 'manual');
+        }
+      }
       ({ error } = await sb.from('units').update(payload).eq('id', unitId));
     } else {
       // إضافة
@@ -572,22 +600,81 @@ async function deleteUnit(unitId) {
 // ══════════════════════════
 // إرسال تذكير إيجار
 // ══════════════════════════
-function sendRentReminder(unitId) {
+function sendRentReminder(unitId, tenantNum) {
   const unit = _allUnits.find(u => u.id === unitId);
-  if (!unit || !unit.phone) return;
+  if (!unit) return;
+
+  const isT2   = tenantNum === 2 && unit.tenant_name2;
+  const name   = isT2 ? unit.tenant_name2 : (unit.tenant_name || '');
+  const phone  = isT2 ? (unit.phone2 || '') : (unit.phone || '');
+  const rent   = isT2 ? parseFloat(unit.rent2 || 0) : parseFloat(unit.rent1 || unit.monthly_rent || 0);
+  const lang   = (unit.language || 'AR').toUpperCase();
+
+  if (!phone) { toast(t('no_phone') || 'مفيش رقم هاتف', 'error'); return; }
 
   const paidMap = {};
-  for (const p of _currentMonthPayments) {
-    paidMap[p.unit_id] = (paidMap[p.unit_id] || 0) + parseFloat(p.amount || 0);
+  for (const p of (_currentMonthPayments || [])) {
+    if (p.tenant_num === 2) {
+      paidMap['_t2_' + p.unit_id] = (paidMap['_t2_' + p.unit_id] || 0) + parseFloat(p.amount || 0);
+    } else {
+      paidMap[p.unit_id] = (paidMap[p.unit_id] || 0) + parseFloat(p.amount || 0);
+    }
   }
 
-  const paid      = paidMap[unitId] || 0;
-  const required  = parseFloat(unit.monthly_rent || 0);
-  const remaining = Math.max(0, required - paid);
-  const msg       = Helpers.rentReminderMsg(unit, Helpers.currentMonthFirst(), remaining, unit.language);
+  const paid      = isT2 ? (paidMap['_t2_' + unitId] || 0) : (paidMap[unitId] || 0);
+  const remaining = Math.max(0, rent - paid);
 
-  Helpers.openWhatsApp(unit.phone, msg);
+  // بناء الرسالة حسب اللغة
+  const unitForMsg = { tenant_name: name, apartment: unit.apartment, room: unit.room };
+  const msg = Helpers.rentReminderMsg(unitForMsg, Helpers.currentMonthFirst(), remaining, lang);
+
+  // Modal قابل للتعديل — زي واحدتي
+  showWAModal(phone, name, msg, lang);
 }
+
+// ══════════════════════════
+// showWAModal — modal WhatsApp قابل للتعديل
+// ══════════════════════════
+function showWAModal(phone, name, msg, lang) {
+  // إزالة modal موجود
+  const existing = document.getElementById('wa-modal');
+  if (existing) existing.remove();
+
+  const num = Helpers.formatPhone(phone);
+
+  const modal = document.createElement('div');
+  modal.id = 'wa-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:var(--surf);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-weight:800;font-size:1rem">💬 WhatsApp — ${Helpers.escapeHtml(name || '')}</div>
+        <button onclick="document.getElementById('wa-modal').remove()"
+          style="background:var(--surf2);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem">✕</button>
+      </div>
+      <textarea id="wa-msg-text"
+        style="width:100%;height:160px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--text);font-family:inherit;font-size:.82rem;resize:vertical;line-height:1.6;direction:${lang === 'EN' ? 'ltr' : 'rtl'}"
+        dir="${lang === 'EN' ? 'ltr' : 'rtl'}"
+      >${Helpers.escapeHtml(msg)}</textarea>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <a id="wa-send-btn"
+          href="https://wa.me/${num}?text=${encodeURIComponent(msg)}"
+          target="_blank"
+          onclick="setTimeout(()=>{ const t=document.getElementById('wa-msg-text'); if(t){ const u='https://wa.me/${num}?text='+encodeURIComponent(t.value); document.getElementById('wa-send-btn').href=u; } },0)"
+          style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:#25D366;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:.9rem">
+          💬 ${lang === 'EN' ? 'Send WhatsApp' : 'إرسال واتساب'}
+        </a>
+        <button onclick="document.getElementById('wa-modal').remove()"
+          style="padding:13px 18px;background:var(--surf2);color:var(--text);border:1px solid var(--border);border-radius:12px;cursor:pointer;font-family:inherit">
+          ${lang === 'EN' ? 'Cancel' : 'إلغاء'}
+        </button>
+      </div>
+    </div>`;
+
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+window.showWAModal = showWAModal;
 
 // ══════════════════════════
 // بحث وفلترة

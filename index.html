@@ -433,5 +433,17 @@
   });
 </script>
 
+
+<!-- PDF Overlay -->
+<div id="pdfOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:800;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--surf);border-bottom:1px solid var(--border)">
+    <button onclick="closePdf()" style="background:none;border:none;color:var(--text);font-size:1.1rem;cursor:pointer;font-family:inherit">✕ إغلاق</button>
+    <span style="font-weight:700">معاينة التقرير</span>
+    <button onclick="printPdf()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-family:inherit;font-weight:600">🖨️ طباعة</button>
+  </div>
+  <div id="pdf-content" style="flex:1;overflow-y:auto;background:#fff;padding:24px"></div>
+</div>
+
+  <script src="profiles.js"></script>
 </body>
 </html>

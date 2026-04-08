@@ -126,6 +126,11 @@ const Helpers = (() => {
     fmtDate,
     fmtMonth,
     currentMonthFirst,
+    nextMonthEnd: function() {
+      const now = new Date();
+      // آخر يوم في الشهر القادم
+      return new Date(now.getFullYear(), now.getMonth()+2, 0).toISOString().slice(0,10);
+    },
     toMonthFirst,
     today,
     escapeHtml,
