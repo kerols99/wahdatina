@@ -319,6 +319,15 @@ const T = {
   theme_changed:      { ar: '✅ تم تغيير الثيم', en: '✅ Theme changed' },
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+  btn_send_contract:  { ar: 'إرسال العقد',          en: 'Send Contract' },
+  contract_options:   { ar: 'خيارات العقد',          en: 'Contract Options' },
+  contract_note:      { ar: 'ملاحظة إضافية',         en: 'Additional Note' },
+  contract_note_ph:   { ar: 'مثال: يُمنع التدخين...',en: 'e.g. No smoking...' },
+  contract_lang:      { ar: 'لغة العقد',             en: 'Contract Language' },
+  nav_buildings:  { ar: 'المباني',   en: 'Buildings' },
+  nav_theme:      { ar: 'المظهر',    en: 'Theme' },
   // BUILDINGS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━
   manage_buildings:     { ar: 'إدارة المباني',         en: 'Manage Buildings' },

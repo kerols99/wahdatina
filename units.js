@@ -347,6 +347,7 @@ async function openUnitDrawer(unitId) {
     ${unit.phone  ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',1)">💬 ${unit.tenant_name  ? Helpers.escapeHtml(unit.tenant_name.split(' ')[0])  : t('btn_reminder')}</button>` : ''}
     ${unit.phone2 && unit.tenant_name2 ? `<button class="btn btn-whatsapp" onclick="sendRentReminder('${unit.id}',2)">💬 ${Helpers.escapeHtml(unit.tenant_name2.split(' ')[0])}</button>` : ''}
     ${!unit.is_vacant ? `<button class="btn btn-warning" onclick="openDepartureForm('${unit.id}')">${t('btn_departure')}</button>` : ''}
+    ${!unit.is_vacant ? `<button class="btn btn-secondary" style="width:100%;margin-top:6px" onclick="openSendContract('${unit.id}')">📄 ${t('btn_send_contract')}</button>` : ''}
   </div>
   <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
     <button class="btn" style="background:var(--accent)18;border:1px solid var(--accent)44;color:var(--accent);width:100%"
@@ -863,4 +864,233 @@ async function deleteBuilding(id) {
   } catch(err) {
     toast(`❌ ${err.message}`, 'error');
   }
+}
+
+// ══════════════════════════════════════════
+// openSendContract — إرسال العقد / الإيصال
+// ══════════════════════════════════════════
+async function openSendContract(unitId) {
+  const unit = _allUnits.find(u => u.id === unitId);
+  if (!unit) return;
+
+  const buildingName = _allBuildings.find(b => b.id === unit.building_id)?.name || '';
+
+  openDrawer(`
+<div class="drawer-form">
+  <div class="drawer-form-header">
+    <h2>📄 ${t('btn_send_contract')}</h2>
+    <button class="close-btn" onclick="closeDrawer()">✕</button>
+  </div>
+
+  <!-- معلومات الوحدة -->
+  <div class="contract-unit-info">
+    <div class="info-item">
+      <span class="info-label">${t('drawer_tenant')}</span>
+      <span>${Helpers.escapeHtml(unit.tenant_name || '—')}</span>
+    </div>
+    ${unit.tenant_name2 ? `<div class="info-item"><span class="info-label">${t('drawer_partner')}</span><span>${Helpers.escapeHtml(unit.tenant_name2)}</span></div>` : ''}
+    <div class="info-item">
+      <span class="info-label">${t('apt_label')}</span>
+      <span>${Helpers.escapeHtml(unit.apartment)} — ${t('room_label')} ${Helpers.escapeHtml(unit.room)}</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">${t('drawer_rent')}</span>
+      <span class="green">${Helpers.formatAED(unit.monthly_rent)}</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">${t('drawer_start')}</span>
+      <span>${Helpers.fmtDate(unit.start_date)}</span>
+    </div>
+  </div>
+
+  <!-- خيارات العقد -->
+  <div class="section-title" style="margin-top:16px">${t('contract_options')}</div>
+
+  <div class="form-group">
+    <label>${t('contract_note')}</label>
+    <textarea id="contract-extra-note" rows="3"
+      placeholder="${t('contract_note_ph')}"
+      style="width:100%;background:var(--surf2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;color:var(--text);font-family:var(--font);resize:vertical"></textarea>
+  </div>
+
+  <div class="form-group">
+    <label>${t('contract_lang')}</label>
+    <select id="contract-lang" style="width:100%;background:var(--surf2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;color:var(--text)">
+      <option value="both" ${(unit.language||'AR').toUpperCase()==='AR' ? 'selected' : ''}>عربي + English</option>
+      <option value="ar" ${(unit.language||'AR').toUpperCase()==='AR' ? '' : ''}>عربي فقط</option>
+      <option value="en" ${(unit.language||'AR').toUpperCase()==='EN' ? 'selected' : ''}>English only</option>
+    </select>
+  </div>
+
+  <!-- أزرار -->
+  <div class="form-actions" style="flex-direction:column;gap:8px">
+    <button class="btn btn-primary btn-full" onclick="previewContract('${unitId}')">
+      👁 ${t('btn_preview')}
+    </button>
+    <button class="btn btn-success btn-full" onclick="printContract('${unitId}')">
+      🖨️ ${t('btn_print')} PDF
+    </button>
+    ${unit.phone ? `
+    <button class="btn btn-whatsapp btn-full" onclick="sendContractWhatsApp('${unitId}')">
+      💬 WhatsApp — ${Helpers.escapeHtml(unit.tenant_name?.split(' ')[0] || '')}
+    </button>` : ''}
+    ${unit.phone2 && unit.tenant_name2 ? `
+    <button class="btn btn-whatsapp btn-full" onclick="sendContractWhatsApp('${unitId}', 2)">
+      💬 WhatsApp — ${Helpers.escapeHtml(unit.tenant_name2?.split(' ')[0] || '')}
+    </button>` : ''}
+  </div>
+</div>`);
+}
+
+// ── بناء HTML العقد ──────────────────────────
+function buildContractHTML(unit, buildingName, extraNote, lang) {
+  const showAr = lang !== 'en';
+  const showEn = lang !== 'ar';
+  const isAr = lang !== 'en';
+
+  const info = [
+    [showAr ? 'الاسم الكامل' : '', showEn ? 'Full Name' : '', Helpers.escapeHtml(unit.tenant_name || '—') + (unit.tenant_name2 ? ' & ' + Helpers.escapeHtml(unit.tenant_name2) : '')],
+    [showAr ? 'رقم الشقة' : '', showEn ? 'Apartment No.' : '', unit.apartment],
+    [showAr ? 'رقم الغرفة' : '', showEn ? 'Room No.' : '', unit.room],
+    [showAr ? 'المبنى' : '', showEn ? 'Building' : '', Helpers.escapeHtml(buildingName || '—')],
+    [showAr ? 'الإيجار الشهري' : '', showEn ? 'Monthly Rent' : '', unit.monthly_rent + ' AED'],
+    [showAr ? 'التأمين' : '', showEn ? 'Security Deposit' : '', unit.deposit + ' AED'],
+    [showAr ? 'تاريخ البداية' : '', showEn ? 'Start Date' : '', Helpers.fmtDate(unit.start_date)],
+    [showAr ? 'عدد الأشخاص' : '', showEn ? 'Persons' : '', unit.persons_count || 1],
+    [showAr ? 'رقم الهاتف' : '', showEn ? 'Phone' : '', unit.phone || '—'],
+  ];
+
+  const rules = [
+    ['العربون / Booking Deposit',     'التأمين مطلوب لتأكيد الحجز / Deposit required to confirm booking.'],
+    ['الإلغاء / Cancellation',        'الإلغاء يُسقط العربون / Cancellation forfeits deposit.'],
+    ['استرداد التأمين / Refund Rule',  'يُرد كاملاً لو أُبلغ قبل اليوم 15 / Full refund if notice before 15th.'],
+    ['الزيارات / Visits',             'ممنوع الزيارات بالمبيت / No overnight visitors.'],
+    ['التمديد / Extended Stay',       'الإبلاغ قبل أسبوعين / Notify 2 weeks before.'],
+    ['آخر شهر / Last Month',          'لا يُعوّض التأمين / Not a replacement for deposit.'],
+    ['موعد الاسترداد / Deposit',      'يُرد خلال 7 أيام / Returned within 7 days.'],
+    ['التبليغ المتأخر / Late Notice',  'بعد 15 = شهر كامل / After 15th = full month.'],
+    ['تحصيل الإيجار / Rent',          'في أول كل شهر / Due on 1st of each month.'],
+    ['الأغراض / Personal Items',      'إزالة جميع الأغراض / Remove all belongings.'],
+    ['التسليم / Handover',            'المفاتيح قبل 4 مساءً / Keys before 4PM.'],
+    ['المطبخ / Kitchen',              'نظافة المطبخ وتفريغ الثلاجة / Clean kitchen, empty fridge.'],
+    ['التدخين / Smoking',             'ممنوع التدخين / No smoking inside.'],
+    ['القفل / Lock Change',           'لا تغيير بدون إذن / No changes without permission.'],
+  ];
+
+  return `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+<title>عقد إيجار — ${unit.apartment}/${unit.room}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; padding: 20px; color: #111; direction: rtl; }
+  @page { size: A4; margin: 12mm; }
+  .header { text-align: center; border-bottom: 3px solid #1a3a6a; padding-bottom: 12px; margin-bottom: 16px; }
+  .header h1 { font-size: 20px; color: #1a3a6a; margin-bottom: 4px; }
+  .header h3 { font-size: 13px; color: #555; font-weight: normal; }
+  .logo { font-size: 28px; margin-bottom: 6px; }
+  .info-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  .info-table td { padding: 6px 10px; border: 1px solid #ddd; font-size: 11px; }
+  .info-table .lbl { background: #f0f4ff; font-weight: 700; color: #1a3a6a; width: 35%; }
+  .section-title { background: #1a3a6a; color: #fff; padding: 6px 12px; font-size: 12px; font-weight: 700; margin-bottom: 8px; border-radius: 4px; }
+  .rules-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5px; }
+  .rules-table th { background: #1a3a6a; color: #fff; padding: 6px 8px; text-align: center; }
+  .rules-table td { padding: 5px 8px; border: 1px solid #ddd; vertical-align: top; line-height: 1.5; }
+  .rules-table tr:nth-child(even) td { background: #f8f9ff; }
+  .sign-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+  .sign-box { border-top: 2px solid #333; padding-top: 8px; text-align: center; font-size: 11px; color: #555; }
+  .note-box { background: #fffde7; border: 1px solid #f0c040; border-radius: 6px; padding: 10px; margin-bottom: 14px; font-size: 11px; }
+  .footer { text-align: center; margin-top: 20px; font-size: 9px; color: #aaa; border-top: 1px solid #eee; padding-top: 8px; }
+</style>
+</head><body>
+<div class="header">
+  <div class="logo">🏢</div>
+  <h1>واحدتنا — Wahdatina</h1>
+  <h3>عقد إيجار سكني / Residential Tenancy Agreement</h3>
+  <div style="font-size:10px;color:#888;margin-top:4px">تاريخ الإصدار: ${new Date().toLocaleDateString('ar-AE')} — ${new Date().toLocaleDateString('en-AE')}</div>
+</div>
+
+<div class="section-title">بيانات الوحدة والمستأجر / Unit & Tenant Details</div>
+<table class="info-table">
+  ${info.map(([ar, en, val]) => `
+  <tr>
+    <td class="lbl">${ar}${ar && en ? ' / ' : ''}${en}</td>
+    <td>${val}</td>
+  </tr>`).join('')}
+</table>
+
+${extraNote ? `<div class="note-box">📝 ${Helpers.escapeHtml(extraNote)}</div>` : ''}
+
+<div class="section-title">شروط وأحكام الإقامة / Terms & Conditions</div>
+<table class="rules-table">
+  <thead><tr><th>#</th><th>البند / Rule</th><th>التفاصيل / Details</th></tr></thead>
+  <tbody>
+    ${rules.map((r, i) => `
+    <tr>
+      <td style="text-align:center;width:30px">${i + 1}</td>
+      <td style="font-weight:700;width:160px">${r[0]}</td>
+      <td>${r[1]}</td>
+    </tr>`).join('')}
+  </tbody>
+</table>
+
+<div class="sign-row">
+  <div class="sign-box">
+    <div style="margin-bottom:40px"></div>
+    توقيع المستأجر / Tenant Signature
+    <div style="margin-top:6px;color:#333;font-weight:700">${Helpers.escapeHtml(unit.tenant_name || '')}</div>
+  </div>
+  <div class="sign-box">
+    <div style="margin-bottom:40px"></div>
+    توقيع الإدارة / Management Signature
+  </div>
+</div>
+
+<div class="footer">واحدتنا — Wahdatina · ${buildingName} · ${new Date().getFullYear()}</div>
+</body></html>`;
+}
+
+// ── Preview ──────────────────────────────────
+function previewContract(unitId) {
+  const unit = _allUnits.find(u => u.id === unitId);
+  if (!unit) return;
+  const buildingName = _allBuildings.find(b => b.id === unit.building_id)?.name || '';
+  const note = document.getElementById('contract-extra-note')?.value || '';
+  const lang = document.getElementById('contract-lang')?.value || 'both';
+  const html = buildContractHTML(unit, buildingName, note, lang);
+  const win = window.open('', '_blank');
+  if (!win) { toast(t('allow_popups'), 'error'); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+// ── Print PDF ────────────────────────────────
+async function printContract(unitId) {
+  const unit = _allUnits.find(u => u.id === unitId);
+  if (!unit) return;
+  const buildingName = _allBuildings.find(b => b.id === unit.building_id)?.name || '';
+  const note = document.getElementById('contract-extra-note')?.value || '';
+  const lang = document.getElementById('contract-lang')?.value || 'both';
+  const html = buildContractHTML(unit, buildingName, note, lang);
+  const win = window.open('', '_blank');
+  if (!win) { toast(t('allow_popups'), 'error'); return; }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 400);
+}
+
+// ── WhatsApp ─────────────────────────────────
+function sendContractWhatsApp(unitId, tenantNum = 1) {
+  const unit = _allUnits.find(u => u.id === unitId);
+  if (!unit) return;
+
+  const phone = tenantNum === 2 ? unit.phone2 : unit.phone;
+  const name  = tenantNum === 2 ? unit.tenant_name2 : unit.tenant_name;
+  const lang  = (unit.language || 'AR').toUpperCase();
+
+  if (!phone) { toast(t('no_phone'), 'error'); return; }
+
+  const msg = lang === 'AR'
+    ? `السلام عليكم ${name} 👋\nنرسل لكم نسخة من عقد الإيجار لوحدتكم:\n🏠 شقة ${unit.apartment} — غرفة ${unit.room}\n💰 الإيجار: ${Helpers.formatAED(unit.monthly_rent)} شهرياً\n📅 تاريخ البداية: ${Helpers.fmtDate(unit.start_date)}\n\nللاستفسار تواصل معنا 🙏`
+    : `Hello ${name} 👋\nPlease find your tenancy contract:\n🏠 Apt ${unit.apartment} — Room ${unit.room}\n💰 Rent: ${Helpers.formatAED(unit.monthly_rent)}/month\n📅 Start: ${Helpers.fmtDate(unit.start_date)}\n\nContact us for any inquiries 🙏`;
+
+  Helpers.openWhatsApp(phone, msg);
 }
